@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Pagamento | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <section class="perfil-container">
+        <div class="perfil-card">
+            <h2>Finalizar Pagamento</h2>
+            
+            <div class="payment-tabs">
+                <button class="tab-btn active" onclick="switchTab('pix')" id="tab-btn-pix">PIX</button>
+                <button class="tab-btn" onclick="switchTab('card')" id="tab-btn-card">Cartão de Crédito</button>
+            </div>
+
+            <div style="text-align:center; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 10px;">
+                <p style="color:#666; font-size: 0.9rem;">Total a Pagar</p>
+                <h3 style="color:#333; font-size: 1.8rem;" id="total-display">R$ 0,00</h3>
+            </div>
+
+            <!-- ABA PIX -->
+            <div id="tab-pix" class="payment-method active">
+                <p>Escaneie o QR Code abaixo ou copie a chave para finalizar sua compra.</p>
+                <img src="img/pix-qrcode.png" alt="QR Code PIX" style="margin:20px auto;display:block; max-width: 200px;">
+                <p style="font-size:1.1rem;word-break:break-all;">Chave PIX: <b>natripaventura@gmail.com</b></p>
+                <p style="margin-top:18px;color:#666;">Após o pagamento, envie o comprovante para nosso WhatsApp: <b>(31) 97537-6707</b></p>
+                <button id="btn-pago-pix" class="action-btn" style="display:block;margin:22px auto 0;background:linear-gradient(135deg,#009900,#00cc44);color:#fff;padding:12px 28px;border:none;border-radius:10px;font-size:1.1rem;cursor:pointer;">Já paguei</button>
+            </div>
+
+            <!-- ABA CARTÃO -->
+            <div id="tab-card" class="payment-method">
+                <div class="card-form">
+                    <h3>Pagar com PayPal ou Cartão</h3>
+                    <p style="margin-bottom: 20px; color: #666;">Use sua conta PayPal ou Cartão de Crédito de forma segura.</p>
+                    
+                    <!-- Container onde o botão do PayPal será renderizado -->
+                    <div id="paypal-button-container"></div>
+                    
+                    <div id="pagamento-status" style="display:none; text-align:center; margin-top:20px; padding:15px; background:#d4edda; color:#155724; border-radius:8px;"></div>
+                </div>
+            </div>
+
+            <div id="pagamento-status" style="margin-top:25px;font-size:1.1rem;font-weight:600;color:#009900;display:none;text-align:center;">
+                Pagamento realizado com sucesso! 🎉<br>
+                <span style="font-size:0.9rem;color:#666;font-weight:400">Você receberá um e-mail de confirmação em breve.</span>
+            </div>
+            
+            <a href="minhas-compras.html" style="display:inline-block;margin-top:18px;color:#C85F00;text-decoration:underline;">Voltar para Minhas Compras</a>
+        </div>
+    </section>
+    <footer>
+        <p>© 2026 Natrip Aventura</p>
+    </footer>
+    <script src="js/main.js"></script>
+    <!-- 
+      Integração PayPal REAL (Produção)
+      Client ID configurado corretamente.
+    -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AfSA4W32kTqZ6zGXfj5OU1BKt1CIAj8klNI5lugtWPvkam8_jN2KZS11ld5pZFposuC8yNbBYsUaoKaT&currency=BRL&enable-funding=credit,card"></script>
+
+    <script>
+    // Recupera item do checkout
+    const checkoutItem = JSON.parse(localStorage.getItem('natrip_checkout_item') || 'null');
+    
+    // Define valor total (prioridade: item do checkout > 1.00 padrão)
+    let valorTotalPagamento = checkoutItem ? checkoutItem.totalValue : 1.00;
+
+    // Garante que o valor seja string válida para o PayPal (ex: "1250.00")
+    // Se for string "1.250,00", converte para float
+    if (typeof valorTotalPagamento === 'string') {
+        // Remove R$, pontos de milhar e troca vírgula por ponto
+        let cleanVal = valorTotalPagamento.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+        // Se o valor era formatado (ex: 1.000,00 -> 1000.00), ajusta
+        // Mas no meu código anterior, totalValue era salvo como número ou string?
+        // Em minhas-compras.html: (city.price * seats).toFixed(2) -> string "100.00"
+        // Então está ok, apenas garantimos.
+        if (isNaN(parseFloat(cleanVal))) {
+             valorTotalPagamento = "1.00";
+        } else {
+             valorTotalPagamento = cleanVal;
+        }
+    }
+
+    // Formatação auxiliar
+    function formatCurrency(val) {
+        return parseFloat(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    // Gerenciamento de Abas
+    function switchTab(method) {
+        // Remove active de todos
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.payment-method').forEach(div => div.classList.remove('active'));
+        
+        // Adiciona active no selecionado
+        document.getElementById(`tab-btn-${method}`).classList.add('active');
+        document.getElementById(`tab-${method}`).classList.add('active');
+        
+        // Reseta status se mudar de aba
+        document.getElementById('pagamento-status').style.display = 'none';
+        
+        // Re-exibe os botões de ação caso tenham sido ocultados
+        if(method === 'pix') document.getElementById('btn-pago-pix').style.display = 'block';
+        if(method === 'card') document.getElementById('btn-pago-card').style.display = 'block';
+    }
+
+    // Lógica PIX (Simulação)
+    document.getElementById('btn-pago-pix').addEventListener('click', function() {
+        const btn = this;
+        btn.textContent = 'Verificando...';
+        btn.disabled = true;
+        
+        setTimeout(function() {
+            btn.style.display = 'none';
+            document.getElementById('pagamento-status').style.display = 'block';
+        }, 2000);
+    });
+
+    // Formatação auxiliar
+    function formatCurrency(val) {
+        return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    // Inicializa o botão do PayPal usando endpoints server-side para criar/capturar ordem
+    paypal.Buttons({
+        createOrder: function(data, actions) {
+            // ask server to create order and return orderID
+            return fetch('/api/paypal/create-order', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: valorTotalPagamento.toString() })
+            }).then(r => r.json()).then(resp => {
+                if (!resp || !resp.id) throw new Error('Não foi possível criar ordem PayPal');
+                return resp.id;
+            });
+        },
+        onApprove: function(data, actions) {
+            // capture via server to keep credentials secret and get full details
+            return fetch('/api/paypal/capture-order', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderID: data.orderID })
+            }).then(r => r.json()).then(details => {
+                if (details && details.status && (details.status === 'COMPLETED' || details.status === 'completed')) {
+                    const statusDiv = document.getElementById('pagamento-status');
+                    document.getElementById('paypal-button-container').style.display = 'none';
+                    const payerName = (details.payer && details.payer.name && details.payer.name.given_name) ? details.payer.name.given_name : '';
+                    statusDiv.innerHTML = `
+                        <h3>Pagamento Realizado! 🎉</h3>
+                        <p>Obrigado, ${payerName}!</p>
+                        <p>ID da Transação: ${details.purchase_units && details.purchase_units[0] && details.purchase_units[0].payments && details.purchase_units[0].payments.captures && details.purchase_units[0].payments.captures[0] ? details.purchase_units[0].payments.captures[0].id : data.orderID}</p>
+                        <small>Você será redirecionado em instantes...</small>
+                    `;
+                    statusDiv.style.display = 'block';
+                    setTimeout(() => { localStorage.removeItem('natrip_checkout_item'); window.location.href = 'minhas-compras.html'; }, 4000);
+                } else {
+                    console.error('Capture response', details);
+                    alert('Ocorreu um erro ao confirmar o pagamento.');
+                }
+            }).catch(err => { console.error(err); alert('Ocorreu um erro no processamento do PayPal. Tente novamente.'); });
+        },
+        onError: function(err) { console.error(err); alert('Ocorreu um erro no processamento do PayPal. Tente novamente.'); }
+    }).render('#paypal-button-container');
+
+    // Inicialização da página
+    function initPayment() {
+        document.getElementById('total-display').textContent = formatCurrency(valorTotalPagamento);
+    }
+    
+    // Inicia
+    initPayment();
+    </script>
+</body>
+</html>

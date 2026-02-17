@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Contato — Natrip Aventura</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- header é injetado por js/main.js; mantemos marcação mínima -->
+
+    <main class="destinos-layout" style="padding-top:40px;">
+        <section class="perfil-card" style="max-width:760px; margin:auto;">
+            <h2>Fale com a Natrip Aventura</h2>
+            <p style="color:#666;margin-top:8px;">Estamos à disposição para tirar dúvidas e ajudar no seu roteiro.</p>
+
+            <form id="contact-form" style="margin-top:20px; display:grid; gap:12px;">
+                <label>
+                    <strong>Nome (opcional)</strong>
+                    <input id="contact-name" type="text" placeholder="Seu nome" style="width:100%; padding:10px; margin-top:6px; border-radius:8px; border:1px solid #ddd;">
+                </label>
+
+                <label>
+                    <strong>E‑mail</strong>
+                    <input id="contact-email" type="email" required placeholder="seu@exemplo.com" style="width:100%; padding:10px; margin-top:6px; border-radius:8px; border:1px solid #ddd;">
+                </label>
+
+                <label>
+                    <strong>Mensagem</strong>
+                    <textarea id="contact-message" required placeholder="Escreva sua mensagem aqui" rows="6" style="width:100%; padding:10px; margin-top:6px; border-radius:8px; border:1px solid #ddd;"></textarea>
+                </label>
+
+                <div style="display:flex; gap:12px; align-items:center; justify-content:center;">
+                    <button type="submit" class="btn-agendar" style="max-width:220px;">Enviar mensagem</button>
+                </div>
+                <div id="contact-msg" style="color:#666; text-align:center; margin-top:6px;"></div>
+            </form>
+
+            <div style="margin-top:18px;">
+                <strong>Telefone:</strong>
+                <div style="margin-top:6px; font-size:1.05rem; color:#333;">(31) 97537-6707</div>
+                <strong style="margin-top:10px; display:block;">E‑mail:</strong>
+                <div style="margin-top:6px; font-size:1.05rem; color:#333;">natripaventura@gmail.com</div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        (function(){
+            const form = document.getElementById('contact-form');
+            const msgEl = document.getElementById('contact-msg');
+            form.addEventListener('submit', function(e){
+                e.preventDefault();
+                const name = document.getElementById('contact-name').value.trim();
+                const email = document.getElementById('contact-email').value.trim();
+                const message = document.getElementById('contact-message').value.trim();
+                if (!email || !message) {
+                    msgEl.textContent = 'Por favor preencha e‑mail e mensagem.';
+                    msgEl.style.color = '#c33';
+                    return;
+                }
+                const to = 'natripaventura@gmail.com';
+                const subject = encodeURIComponent('Contato via site Natrip Aventura');
+                const bodyLines = [];
+                if (name) bodyLines.push('Nome: ' + name);
+                bodyLines.push('E‑mail do remetente: ' + email);
+                bodyLines.push('---');
+                bodyLines.push(message);
+                const body = encodeURIComponent(bodyLines.join('\n'));
+                msgEl.textContent = 'Abrindo seu cliente de e‑mail...';
+                msgEl.style.color = '#0a7';
+                // abre o cliente de e-mail com os dados preenchidos
+                window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+            });
+        })();
+    </script>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>

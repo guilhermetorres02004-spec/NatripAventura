@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Natureza e Trilhas | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- estilos de página padronizados via css/style.css -->
+</head>
+<body>
+
+<!-- header injected by js/main.js -->
+
+<div class="carousel-container">
+    <div class="carousel" id="city-carousel">
+        <div id="carousel-availability" class="carousel-availability" style="display:none">Vagas: --</div>
+        <button class="carousel-btn prev" onclick="changeSlide(-1)">❮</button>
+        <button class="carousel-btn next" onclick="changeSlide(1)">❯</button>
+        <div class="carousel-indicators" id="carousel-indicators"></div>
+    </div>
+</div>
+
+<section class="page-content">
+    <div>
+        <h1>Natureza e Trilhas</h1>
+        <p>Explore roteiros de natureza, cachoeiras e trilhas incríveis perto de Minas Gerais.</p>
+        <h3>Pontos de interesse</h3>
+        <ul>
+            <li>Cachoeira da Fumaça</li>
+            <li>Parque Estadual</li>
+            <li>Mirante das Pedras</li>
+        </ul>
+    </div>
+
+    <div class="booking-card">
+        <h3>Agendar Viagem</h3>
+        <p id="booking-user-note">Você não está logado. <a href="perfil.html">Faça login</a> para agendar com seus dados.</p>
+        <p id="availability-note" style="color:#666;font-size:0.95rem;margin:6px 0 10px;"></p>
+        <input id="booking-date" type="date">
+        <div id="reserved-dates" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;"></div>
+        <input id="booking-seats" type="number" min="1" value="1">
+        <textarea id="booking-notes" rows="3" placeholder="Observações (opcional)"></textarea>
+        <button id="booking-submit" class="btn-agendar">Agendar</button>
+        <p class="form-msg" id="booking-msg"></p>
+    </div>
+</section>
+
+<section style="max-width:1000px;margin:24px auto;padding:0 16px;">
+    <h3 style="color:#333;margin-bottom:12px;">Viagens de Natureza e Trilhas</h3>
+    <div id="category-trips" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;"></div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const gallery = [
+        'img/natureza/img1.jpg',
+        'img/natureza/img2.jpg',
+        'img/natureza/img3.jpg',
+        'img/natureza/img4.jpg'
+    ];
+
+    initCarousel(gallery);
+
+    const bookingMsg = document.getElementById('booking-msg');
+    const bookingNote = document.getElementById('booking-user-note');
+    const auth = window.natripAuth;
+    const bookingBtn = document.getElementById('booking-submit');
+
+    function refreshAuthState() {
+        const cur = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        if (cur) { bookingNote.textContent = `Reservando como: ${cur.name} (${cur.email})`; if (bookingBtn) bookingBtn.disabled = false; }
+        else { bookingNote.innerHTML = 'Você não está logado. <a href="perfil.html">Faça login</a> para agendar com seus dados.'; if (bookingBtn) bookingBtn.disabled = true; }
+    }
+    refreshAuthState();
+    window.addEventListener('storage', (e) => { if (e.key === 'natrip_currentUser') refreshAuthState(); });
+    const dateInput = document.getElementById('booking-date');
+    // make native date input readonly so browser picker doesn't open on click
+    if (dateInput) dateInput.readOnly = true;
+    const seatsInput = document.getElementById('booking-seats');
+    const availabilityNote = document.getElementById('availability-note');
+
+    const storageKey = 'natrip_bookings_Natureza';
+    function getCityBookings() {
+        try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) { return []; }
+    }
+
+    function updateAvailability(date) {
+        if (!seatsInput) return;
+        if (!date) {
+            availabilityNote.textContent = 'Escolha uma data para ver disponibilidade.';
+            seatsInput.max = 4; seatsInput.disabled = false; return;
+        }
+        const bookings = getCityBookings();
+        const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
+        const available = Math.max(0, 4 - occupied);
+        availabilityNote.textContent = available > 0 ? `Vagas restantes para ${date}: ${available}` : `Sem vagas para ${date}.`;
+        seatsInput.max = available > 0 ? available : 0;
+        if (available === 0) { seatsInput.value = 0; seatsInput.disabled = true; } else { seatsInput.disabled = false; if ((parseInt(seatsInput.value,10)||0) > available) seatsInput.value = available; }
+    }
+
+    function updateCarouselAvailability(date) {
+        const el = document.getElementById('carousel-availability');
+        if (!el) return;
+        if (!date) { el.style.display = 'none'; return; }
+        const bookings = getCityBookings();
+        const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
+        const available = Math.max(0, 4 - occupied);
+        el.textContent = available > 0 ? `Vagas: ${available}` : 'Sem vagas';
+        el.style.display = 'inline-block';
+    }
+
+    if (dateInput) {
+        // create calendar toggle button and wrapper under date input
+        const dateToggle = document.createElement('button'); dateToggle.type='button'; dateToggle.className='date-toggle icon-btn'; dateToggle.setAttribute('aria-label','Abrir calendário'); dateToggle.textContent='📅';
+        const tripCalendarWrap = document.createElement('div'); tripCalendarWrap.className='trip-calendar'; tripCalendarWrap.style.display='none';
+        dateInput.parentNode.insertBefore(dateToggle, dateInput.nextSibling);
+        dateInput.parentNode.insertBefore(tripCalendarWrap, dateToggle.nextSibling);
+
+        // toggle calendar only when clicking the calendar icon
+        dateToggle.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            if (tripCalendarWrap.style.display === 'none') {
+                await renderTripCalendar('Natureza', tripCalendarWrap);
+                tripCalendarWrap.style.display = 'block';
+            } else {
+                tripCalendarWrap.style.display = 'none';
+            }
+        });
+
+        // keep availability updated when date changes, but do not auto-show calendar
+        dateInput.addEventListener('change', (e) => { updateAvailability(e.target.value); updateCarouselAvailability(e.target.value); bookingMsg.textContent = ''; });
+        if (dateInput.value) { updateAvailability(dateInput.value); updateCarouselAvailability(dateInput.value); } else { updateCarouselAvailability(new Date().toISOString().slice(0,10)); }
+
+        // close calendar when clicking outside
+        document.addEventListener('click', (ev) => {
+            if (!tripCalendarWrap.contains(ev.target) && ev.target !== dateToggle && ev.target !== dateInput) {
+                tripCalendarWrap.style.display = 'none';
+            }
+        });
+
+        // prevent clicks inside calendar from closing it
+        tripCalendarWrap.addEventListener('click', (ev) => ev.stopPropagation());
+    }
+
+    // render category trips
+    const renderCategoryTrips = async ()=>{
+        const container = document.getElementById('category-trips');
+        if (!container) return;
+        try {
+            const r = await fetch('/api/trips'); if (!r.ok) return; const all = await r.json();
+            const trips = (all||[]).filter(t=>t.category==='trilhas-e-cachoeiras');
+            if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
+            function escUrl(u){ return (u||'').toString().replace(/'/g, "\\'"); }
+            container.innerHTML = '';
+            trips.forEach(t=>{
+                const rawCover = t.coverImage || '';
+                const finalCover = rawCover ? (new RegExp('^(data:|https?:|/)','i').test(rawCover) ? rawCover : ('/' + rawCover)) : '';
+                const img = finalCover ? finalCover : `img/natureza/img1.jpg`;
+                const href = `cidade.html?nome=${encodeURIComponent(t.city||'')}&date=${encodeURIComponent(t.date||'')}`;
+                const a = document.createElement('a');
+                a.className = 'cidade-card';
+                a.href = href;
+                a.style.height = '200px';
+                if (img) a.style.backgroundImage = `url('${img.replace(/'/g, "\\'")}')`;
+                const ov = document.createElement('div'); ov.className='overlay'; a.appendChild(ov);
+                const inner = document.createElement('div');
+                const h = document.createElement('h3'); h.textContent = t.city||'Destino';
+                const p = document.createElement('p'); p.textContent = t.city || '';
+                inner.appendChild(h); inner.appendChild(p);
+                if (t.description) { const pd = document.createElement('p'); pd.style.marginTop='8px'; pd.style.color='#fff'; pd.textContent = t.description; inner.appendChild(pd); }
+                a.appendChild(inner);
+                container.appendChild(a);
+            });
+        } catch(e) {}
+    };
+    renderCategoryTrips();
+    window.addEventListener('storage', (e)=>{ if (e.key === 'natrip_admin_trips_updated_at') renderCategoryTrips(); });
+
+    async function renderTripCalendar(city, wrap) {
+        wrap.innerHTML='';
+        const now = new Date();
+        const year = now.getFullYear(), month = now.getMonth();
+        const head = document.createElement('div'); head.className='cal-head'; const title = document.createElement('div'); title.textContent = now.toLocaleString('pt-BR',{month:'long',year:'numeric'}); const nav = document.createElement('div'); nav.innerHTML = `<button class="icon-btn" id="cal-prev-n">‹</button><button class="icon-btn" id="cal-next-n">›</button>`; head.appendChild(title); head.appendChild(nav); wrap.appendChild(head);
+        const grid = document.createElement('div'); grid.className='cal-grid';
+        const first = new Date(year,month,1); const startDay = (first.getDay()+6)%7; const daysInMonth = new Date(year, month+1,0).getDate();
+        let tripDatesSet = new Set();
+        try {
+            const r = await fetch('/api/trips');
+            if (r.ok) {
+                const all = await r.json();
+                all.filter(t => t.city === city).forEach(t => tripDatesSet.add(t.date));
+            }
+        } catch (e) { /* ignore */ }
+        const prevCount = startDay; const prevLast = new Date(year, month,0).getDate(); for (let i=prevCount-1;i>=0;i--){ const d=prevLast-i; const el=document.createElement('div'); el.className='cal-day other-month'; el.textContent=d; grid.appendChild(el);} 
+        for (let d=1; d<=daysInMonth; d++){ const yyyy=year.toString(); const mm=String(month+1).padStart(2,'0'); const dd=String(d).padStart(2,'0'); const iso=`${yyyy}-${mm}-${dd}`; const el=document.createElement('div'); el.className='cal-day'; el.textContent=d; el.dataset.date=iso; if (tripDatesSet.has(iso)) { el.classList.add('trip'); el.addEventListener('click', ()=>{ dateInput.value=iso; dateInput.dispatchEvent(new Event('change')); grid.querySelectorAll('.cal-day').forEach(x=>x.classList.toggle('selected', x.dataset.date===iso)); wrap.style.display='none'; }); } else { el.classList.add('disabled'); } grid.appendChild(el);} while (grid.children.length%7!==0){ const el=document.createElement('div'); el.className='cal-day other-month'; el.textContent=''; grid.appendChild(el);} wrap.appendChild(grid);
+        document.getElementById('cal-prev-n').addEventListener('click', ()=>{ /* noop: simple calendar shows current month only for now */ });
+        document.getElementById('cal-next-n').addEventListener('click', ()=>{ /* noop */ });
+    }
+
+    // reserved dates UI
+    const reservedDatesContainer = document.getElementById('reserved-dates');
+    function renderReservedDates() {
+        if (!reservedDatesContainer) return;
+        let currentUser = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        if (!currentUser) { reservedDatesContainer.innerHTML = ''; return; }
+        const reserved = (window.natripAuth && window.natripAuth.getUserReservedDates) ? window.natripAuth.getUserReservedDates(currentUser.email) : JSON.parse(localStorage.getItem(`natrip_reserved_dates_${currentUser.email}`) || '[]');
+        reservedDatesContainer.innerHTML = reserved.map(d => `<button class="reserved-date-badge" data-date="${d}">${d}</button>`).join('') || '';
+        reservedDatesContainer.querySelectorAll('.reserved-date-badge').forEach(b => {
+            const d = b.dataset.date; if (dateInput && dateInput.value === d) b.classList.add('selected'); else b.classList.remove('selected');
+            b.addEventListener('click', (ev) => { const d2 = ev.currentTarget.dataset.date; if (!d2) return; dateInput.value = d2; dateInput.dispatchEvent(new Event('change')); reservedDatesContainer.querySelectorAll('.reserved-date-badge').forEach(x => x.classList.toggle('selected', x.dataset.date === d2)); });
+        });
+    }
+
+    document.getElementById('booking-submit').addEventListener('click', () => {
+        const date = dateInput.value;
+        const seats = parseInt(seatsInput.value,10) || 1;
+        const notes = document.getElementById('booking-notes').value.trim();
+        const currentUser = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        if (!currentUser) { bookingMsg.textContent = 'Faça login para agendar.'; bookingMsg.style.color = '#c33'; return; }
+
+        if (!date) { bookingMsg.textContent = 'Escolha uma data.'; bookingMsg.style.color = '#c33'; return; }
+
+        const bookings = getCityBookings();
+        const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
+        const available = Math.max(0, 4 - occupied);
+        if (available <= 0) { bookingMsg.textContent = 'Não há vagas para essa data.'; bookingMsg.style.color = '#c33'; return; }
+        if (seats < 1 || seats > available) { bookingMsg.textContent = `Informe entre 1 e ${available} pessoas.`; bookingMsg.style.color = '#c33'; return; }
+
+        const booking = { city: 'Natureza', date, seats, notes, user: currentUser.email, created: new Date().toISOString() };
+        bookings.push(booking);
+        localStorage.setItem(storageKey, JSON.stringify(bookings));
+
+        // prepare a checkout item (unit price fallback to 1.00)
+        (async () => {
+            let unit = 1.00;
+            try {
+                const r = await fetch('/api/trips');
+                if (r.ok) {
+                    const all = await r.json();
+                    const trip = all.find(t => t.city === 'Natureza' && t.date === date) || all.find(t => t.city === 'Natureza');
+                    if (trip && typeof trip.price !== 'undefined' && trip.price !== null) unit = parseFloat(trip.price);
+                }
+            } catch(e) {}
+            const checkoutItem = { ...booking, unitPrice: unit, totalValue: parseFloat((unit * (parseInt(booking.seats,10)||1)).toFixed(2)) };
+            localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
+            bookingMsg.textContent = 'Viagem agendada com sucesso! Redirecionando para Minhas Compras...'; bookingMsg.style.color = '#0a7';
+            setTimeout(()=>{ window.location.href = 'minhas-compras.html'; }, 800);
+        })();
+    });
+});
+
+// reuse carousel functions from cidade.html (they are global)
+</script>
+</body>
+</html>

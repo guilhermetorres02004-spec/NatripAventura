@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Loja | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- header injetado por js/main.js -->
+
+<section class="destinos-layout" style="max-width:1100px;margin:28px auto;padding:18px;">
+    <h1 style="color:#C85F00;margin-bottom:12px;">Loja</h1>
+    <p style="color:#666;margin-bottom:18px;">Confira produtos e souvenirs das nossas viagens. Clique em "Comprar" para iniciar o processo.</p>
+
+    <div id="shop-products" class="proximas-list"></div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const container = document.getElementById('shop-products');
+    if (!container) return;
+
+    async function loadProducts(){
+        try {
+            const r = await fetch('/api/products');
+            if (r.ok) return await r.json();
+        } catch(e){}
+        try { return JSON.parse(localStorage.getItem('natrip_products')||'[]'); } catch(e){ return []; }
+    }
+
+    const products = (await loadProducts()) || [
+        { id: 'p1', name: 'Camiseta Natrip', price: 59.9, img: 'https://images.unsplash.com/photo-1520975917278-1a7a7f8c7f3a' },
+        { id: 'p2', name: 'Caneca Natrip', price: 29.9, img: 'https://images.unsplash.com/photo-1526403224736-7e9d1b6b1b3f' },
+        { id: 'p3', name: 'Adesivo', price: 4.9, img: 'https://images.unsplash.com/photo-1525909002-7b9b6b5f8f3b' }
+    ];
+
+    function fmtBRL(v){ return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+    container.innerHTML = products.map(p => `
+        <div class="prox-card">
+            <div style="display:flex;gap:12px;align-items:center;">
+                <img src="${p.img}" alt="${p.name}" style="width:84px;height:64px;object-fit:cover;border-radius:8px;" />
+                <div>
+                    <strong style="color:#C85F00">${p.name}</strong>
+                    <div style="color:#666">${fmtBRL(p.price)}</div>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+                <a class="pc-btn" href="pagamento.html?product=${encodeURIComponent(p.id)}">Comprar</a>
+            </div>
+        </div>
+    `).join('');
+});
+</script>
+</body>
+</html>

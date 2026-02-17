@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Perfil | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Área de perfil com dois cartões: Login (entrar) e Criar Conta (cadastro).
+     - Cada form tem um id usado por `js/main.js` para processar autenticação local (localStorage).
+     - Mensagens de feedback são exibidas em elementos com classes/id `form-msg`.
+-->
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Login</h2>
+        <!-- Formulário de login: ids principais -> login-email, login-password, login-form -->
+        <form id="login-form">
+            <input id="login-email" type="email" placeholder="E-mail" required>
+            <input id="login-password" type="password" placeholder="Senha" required>
+            <button type="submit">Entrar</button>
+            <p class="form-msg" id="login-msg"></p>
+        </form>
+    </div>
+
+    <div class="perfil-card">
+        <h2>Criar Conta</h2>
+        <!-- Formulário de cadastro: inclui CPF e Telefone; ids usados por JS: signup-name, signup-cpf, signup-phone, signup-email, signup-password -->
+        <form id="signup-form">
+            <input id="signup-name" type="text" placeholder="Nome completo" required>
+            <input id="signup-cpf" type="text" placeholder="CPF" required>
+            <input id="signup-phone" type="tel" placeholder="Telefone" required>
+            <input id="signup-email" type="email" placeholder="E-mail" required>
+            <input id="signup-password" type="password" placeholder="Senha" required>
+            <button type="submit">Criar Conta</button>
+            <p class="form-msg" id="signup-msg"></p>
+        </form>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>

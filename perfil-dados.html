@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Dados da Conta | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const auth = window.natripAuth;
+        const user = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        const form = document.getElementById('account-form');
+        const msg = document.getElementById('pd-msg');
+
+        if (!user) {
+            form.innerHTML = '<p>Você não está logado. <a href="perfil.html">Entrar / Criar conta</a></p>';
+            return;
+        }
+
+        const inputs = {
+            name: document.getElementById('pd-name'),
+            cpf: document.getElementById('pd-cpf'),
+            phone: document.getElementById('pd-phone'),
+            email: document.getElementById('pd-email'),
+            password: document.getElementById('pd-password')
+        };
+
+        function populate(u) {
+            inputs.name.value = u.name || '';
+            inputs.cpf.value = u.cpf || '';
+            inputs.phone.value = u.phone || '';
+            inputs.email.value = u.email || '';
+            inputs.password.value = '';
+        }
+
+        populate(user);
+
+        const btnEdit = document.getElementById('pd-edit');
+        const btnSave = document.getElementById('pd-save');
+        const btnCancel = document.getElementById('pd-cancel');
+
+        function setEditable(edit) {
+            inputs.name.disabled = !edit;
+            inputs.cpf.disabled = !edit;
+            inputs.phone.disabled = !edit;
+            // keep email readonly to use as key
+            inputs.email.disabled = true;
+            inputs.password.disabled = !edit;
+            btnEdit.style.display = edit ? 'none' : '';
+            btnSave.style.display = edit ? '' : 'none';
+            btnCancel.style.display = edit ? '' : 'none';
+            msg.textContent = '';
+        }
+
+        let original = { ...user };
+
+        btnEdit.addEventListener('click', () => {
+            setEditable(true);
+        });
+
+        btnCancel.addEventListener('click', () => {
+            populate(original);
+            setEditable(false);
+        });
+
+        btnSave.addEventListener('click', () => {
+            const name = inputs.name.value.trim();
+            const cpf = inputs.cpf.value.trim().replace(/\D/g, '');
+            const phone = inputs.phone.value.trim().replace(/\D/g, '');
+            const password = inputs.password.value;
+
+            if (cpf.length !== 11) {
+                msg.textContent = 'CPF inválido. Informe 11 dígitos.';
+                msg.style.color = '#c33';
+                return;
+            }
+            if (phone.length < 10 || phone.length > 11) {
+                msg.textContent = 'Telefone inválido. Informe 10 ou 11 dígitos.';
+                msg.style.color = '#c33';
+                return;
+            }
+
+            // update users array
+            const users = auth ? auth.getUsers() : JSON.parse(localStorage.getItem('natrip_users') || '[]');
+            const uidx = users.findIndex(u => u.email === user.email);
+            if (uidx === -1) {
+                msg.textContent = 'Conta não encontrada.';
+                msg.style.color = '#c33';
+                return;
+            }
+
+            users[uidx].name = name;
+            users[uidx].cpf = cpf;
+            users[uidx].phone = phone;
+            if (password) users[uidx].password = password; // update only if provided
+
+            if (auth) {
+                auth.saveUsers(users);
+                auth.setCurrentUser({ name, email: user.email, cpf, phone });
+                if (auth.updateHeaderAuth) auth.updateHeaderAuth();
+            } else {
+                localStorage.setItem('natrip_users', JSON.stringify(users));
+                localStorage.setItem('natrip_currentUser', JSON.stringify({ name, email: user.email, cpf, phone }));
+            }
+
+            original = { name, email: user.email, cpf, phone };
+            setEditable(false);
+            msg.textContent = 'Dados atualizados com sucesso.';
+            msg.style.color = '#0a7';
+        });
+
+        setEditable(false);
+    });
+    </script>
+
+<body>
+
+<section class="perfil-container">
+    <div class="perfil-card">
+            <h2>Dados da Conta</h2>
+            <!-- Formulário de edição de dados do usuário.
+                 - Os inputs aparecem desativados inicialmente e são habilitados ao clicar em 'Editar'.
+                 - O e-mail é mantido como chave (não editável) para localizar o registro no localStorage.
+            -->
+            <form id="account-form">
+                <input id="pd-name" type="text" placeholder="Nome completo" disabled required>
+                <input id="pd-cpf" type="text" placeholder="CPF" disabled required>
+                <input id="pd-phone" type="tel" placeholder="Telefone" disabled required>
+                <input id="pd-email" type="email" placeholder="E-mail" disabled required>
+                <input id="pd-password" type="password" placeholder="Senha (deixe em branco para manter)" disabled>
+
+                <div style="display:flex;gap:10px;margin-top:12px;">
+                    <button type="button" id="pd-edit">Editar</button>
+                    <button type="button" id="pd-save" style="display:none;">Salvar</button>
+                    <button type="button" id="pd-cancel" style="display:none;">Cancelar</button>
+                </div>
+
+                <p class="form-msg" id="pd-msg"></p>
+            </form>
+        </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+
+</body>
+</html>

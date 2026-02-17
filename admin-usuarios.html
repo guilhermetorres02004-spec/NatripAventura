@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin — Usuários | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- header injetado por js/main.js -->
+
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Usuários Cadastrados</h2>
+        <div id="admin-msg" style="margin-bottom:12px;color:#c33;"></div>
+        <div id="users-list">
+            <!-- tabela de usuários será inserida aqui -->
+        </div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const auth = window.natripAuth;
+    const current = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+    const msg = document.getElementById('admin-msg');
+    const list = document.getElementById('users-list');
+
+    if (!current) {
+        msg.textContent = 'Acesso restrito: faça login como administrador.';
+        return;
+    }
+
+    // busca usuários no servidor
+    let users = [];
+    async function loadUsers() {
+        try {
+            const resp = await fetch('/api/users');
+            if (!resp.ok) {
+                msg.textContent = 'Erro ao carregar usuários do servidor.';
+                return false;
+            }
+            users = await resp.json();
+            return true;
+        } catch (e) {
+            msg.textContent = 'Não foi possível conectar ao servidor.';
+            return false;
+        }
+    }
+
+    const ok = await loadUsers();
+    if (!ok) return;
+
+    // Verifica role no registro completo retornado pelo servidor
+    const full = users.find(u => u.email === current.email);
+    if (!full || full.role !== 'admin') {
+        msg.textContent = 'Acesso negado. Esta área é somente para administradores.';
+        return;
+    }
+
+    if (!users || users.length === 0) {
+        list.innerHTML = '<p>Nenhum usuário cadastrado.</p>'; return;
+    }
+
+    // adiciona campo de pesquisa acima da listagem (estático no DOM)
+    const searchContainer = document.createElement('div');
+    searchContainer.style.margin = '12px 0';
+    searchContainer.innerHTML = `<input id="user-search" placeholder="Pesquisar (nome, e-mail, CPF, telefone, role)" style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;" />`;
+    // insere antes da listagem
+    list.parentNode.insertBefore(searchContainer, list);
+
+    // estado de busca
+    let searchQuery = '';
+    function matches(u, q) {
+        if (!q) return true;
+        q = q.toLowerCase();
+        return (u.name || '').toLowerCase().includes(q)
+            || (u.email || '').toLowerCase().includes(q)
+            || (u.cpf || '').toLowerCase().includes(q)
+            || (u.phone || '').toLowerCase().includes(q)
+            || (u.role || '').toLowerCase().includes(q);
+    }
+
+    // renderiza tabela filtrando pela busca
+    function render() {
+        const rows = users.map((u, i) => matches(u, searchQuery) ? `
+            <tr data-index="${i}">
+                <td class="col-name">${u.name || ''}</td>
+                <td class="col-email">${u.email || ''}</td>
+                <td class="col-cpf">${u.cpf || ''}</td>
+                <td class="col-phone">${u.phone || ''}</td>
+                <td class="col-role">${u.role || 'user'}</td>
+                <td class="col-trips"><button class="icon-btn view-btn" title="Ver viagens" data-email="${u.email}">👁</button></td>
+                <td class="col-actions">
+                    <div class="action-buttons">
+                        <button class="icon-btn edit-btn" title="Editar" data-index="${i}">✎</button>
+                    </div>
+                </td>
+            </tr>
+        ` : '').join('');
+
+        list.innerHTML = `
+            <div style="overflow:auto">
+            <table style="width:100%;border-collapse:separate; border-spacing:0 12px;">
+                <thead>
+                    <tr style="text-align:left;background:#f4f4f4"><th>Nome</th><th>E-mail</th><th>CPF</th><th>Telefone</th><th>Role</th><th>Viagens</th><th></th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+            </div>
+            <div style="margin-top:12px; display:flex; align-items:center; gap:12px;">
+                <button id="add-user-btn" class="add-user-btn" title="Adicionar usuário">＋</button>
+                <div id="add-user-form" style="display:none; width:100%;">
+                    <div class="add-user-form">
+                        <div class="add-user-inputs" style="display:flex; gap:8px; flex-wrap:wrap; flex:1;">
+                            <input id="new-name" class="medium" placeholder="Nome" />
+                            <input id="new-email" class="medium" placeholder="E-mail" />
+                            <input id="new-cpf" class="small" placeholder="CPF" />
+                            <input id="new-phone" class="small" placeholder="Telefone" />
+                            <input id="new-password" class="small" placeholder="Senha" />
+                            <input id="new-role" class="small" placeholder="Role (user/admin)" />
+                        </div>
+                        <div class="add-user-actions">
+                            <button id="new-save" class="save-btn">Salvar</button>
+                            <button id="new-cancel" class="cancel-btn">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        attachHandlers();
+    }
+
+    // inicial render
+    render();
+
+    // Funções de edição inline
+    function startEdit(index) {
+        const tr = list.querySelector(`tbody tr[data-index="${index}"]`);
+        if (!tr) return;
+        const user = users[index];
+        tr.querySelector('.col-name').innerHTML = `<input class="edit-name" value="${(user.name||'').replace(/\"/g,'&quot;')}" />`;
+        tr.querySelector('.col-email').innerHTML = `<input class="edit-email" value="${(user.email||'').replace(/\"/g,'&quot;')}" />`;
+        tr.querySelector('.col-cpf').innerHTML = `<input class="edit-cpf" value="${(user.cpf||'').replace(/\"/g,'&quot;')}" />`;
+        tr.querySelector('.col-phone').innerHTML = `<input class="edit-phone" value="${(user.phone||'').replace(/\"/g,'&quot;')}" />`;
+        tr.querySelector('.col-role').innerHTML = `<input class="edit-role" value="${(user.role||'user').replace(/\"/g,'&quot;')}" />`;
+        tr.querySelector('.col-actions').innerHTML = `<div class="action-buttons"><button class="save-btn" data-index="${index}">Salvar</button><button class="cancel-btn" data-index="${index}">Cancelar</button></div>`;
+
+        // attach listeners for the newly created buttons
+        const saveBtn = tr.querySelector('.save-btn');
+        const cancelBtn = tr.querySelector('.cancel-btn');
+        if (saveBtn) saveBtn.addEventListener('click', () => saveEdit(index));
+        if (cancelBtn) cancelBtn.addEventListener('click', () => cancelEdit(index));
+    }
+
+    function cancelEdit(index) {
+        // re-render full list for simplicity
+        render();
+    }
+
+    async function saveEdit(index) {
+        const tr = list.querySelector(`tbody tr[data-index="${index}"]`);
+        if (!tr) return;
+        const name = tr.querySelector('.edit-name').value.trim();
+        const email = tr.querySelector('.edit-email').value.trim().toLowerCase();
+        const cpf = tr.querySelector('.edit-cpf').value.trim();
+        const phone = tr.querySelector('.edit-phone').value.trim();
+        const role = tr.querySelector('.edit-role').value.trim() || 'user';
+
+        // basic validation: email not empty
+        if (!email) { alert('E-mail não pode ficar vazio.'); return; }
+
+        // update users array and persist to backend (upsert)
+        users[index] = { ...users[index], name, email, cpf, phone, role };
+        try {
+            await fetch('/api/users/upsert', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ users: [users[index]] })
+            });
+        } catch (e) {
+            alert('Falha ao salvar no servidor. Tente novamente.');
+            return;
+        }
+        // update header in case admin changed own name/email
+        if (window.natripAuth && window.natripAuth.updateHeaderAuth) window.natripAuth.updateHeaderAuth();
+        render();
+    }
+
+    function attachHandlers() {
+        // search input handler
+        const searchInputEl = document.getElementById('user-search');
+        if (searchInputEl) {
+            searchInputEl.addEventListener('input', (ev) => {
+                searchQuery = (ev.currentTarget.value || '').trim();
+                render();
+            });
+        }
+        list.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', (ev) => {
+            const idx = ev.currentTarget.dataset.index; startEdit(idx);
+        }));
+        // view trips button: redirect admin to the user's bookings page
+        list.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', (ev) => {
+            const email = ev.currentTarget.dataset.email;
+            if (!email) return;
+            window.location.href = `minhas-compras.html?user=${encodeURIComponent(email)}`;
+        }));
+        // dates button removed; admin manages trips in `admin-viajens.html`
+        // add user button toggles the form
+        const addBtn = document.getElementById('add-user-btn');
+        if (addBtn) addBtn.addEventListener('click', () => {
+            const formWrap = document.getElementById('add-user-form');
+            if (!formWrap) return;
+            formWrap.style.display = formWrap.style.display === 'none' ? '' : 'none';
+        });
+        // new user form actions
+        const newSave = document.getElementById('new-save');
+        const newCancel = document.getElementById('new-cancel');
+        if (newCancel) newCancel.addEventListener('click', () => { const fw = document.getElementById('add-user-form'); if (fw) fw.style.display = 'none'; });
+        if (newSave) newSave.addEventListener('click', async () => {
+            const name = document.getElementById('new-name').value.trim();
+            const email = (document.getElementById('new-email').value || '').trim().toLowerCase();
+            const cpf = document.getElementById('new-cpf').value.trim();
+            const phone = document.getElementById('new-phone').value.trim();
+            const password = document.getElementById('new-password').value || '';
+            const role = (document.getElementById('new-role').value || 'user').trim();
+            if (!email) { alert('E-mail obrigatório'); return; }
+            if (users.find(u => u.email === email)) { alert('Já existe usuário com este e-mail'); return; }
+            const newUser = { name, email, cpf, phone, password, role };
+            try {
+                const resp = await fetch('/api/users/upsert', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ users: [newUser] })
+                });
+                if (!resp.ok) { alert('Falha ao criar usuário no servidor.'); return; }
+                await loadUsers();
+            } catch (e) {
+                alert('Não foi possível conectar ao servidor.');
+                return;
+            }
+            const fw = document.getElementById('add-user-form'); if (fw) fw.style.display = 'none';
+            render();
+        });
+    }
+
+    // inicial
+    attachHandlers();
+
+    // per-user dates removed; admin will manage trips in `admin-viajens.html`
+});
+</script>
+</body>
+</html>

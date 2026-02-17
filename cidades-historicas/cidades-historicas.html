@@ -1,0 +1,142 @@
+<!-- Lista de cidades históricas.
+    Contém um grid de cartões (`.cities-grid`) que apontam para `cidade.html?nome=...`.
+    O header é injetado por `js/main.js`, por isso não está duplicado aqui.
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Cidades Históricas | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .cities-grid { max-width: 1000px; margin: 28px auto; padding: 0 16px; display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap:18px; }
+        .cidade-card { height: 220px; border-radius: 14px; overflow:hidden; position:relative; display:flex; flex-direction:column; justify-content:flex-end; padding:16px; color:#fff; text-decoration:none; }
+        .cidade-card > div { position:relative; z-index:2; }
+        .cidade-card .overlay { position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.6)); }
+        .cidade-card h3 { margin:0 0 6px 0; font-size:1.2rem; letter-spacing:2px; }
+        .cidade-card p { margin:0; font-size:0.9rem; }
+    </style>
+</head>
+<body>
+
+<!-- header injected dynamically por `js/main.js` -->
+
+<!-- Seção introdutória e grid de cartões de cidade. Cada cartão tem imagem de fundo e um overlay para legibilidade. -->
+<section class="destinos-layout">
+    <div style="max-width:900px;margin:24px auto;padding:0 16px;text-align:center;">
+        <h2 style="font-size:1.6rem; color:#333;">Cidades Históricas de Minas Gerais</h2>
+        <p style="color:#666;margin-top:8px;">Clique em uma cidade para ver detalhes e agendar sua viagem.</p>
+    </div>
+
+    <!-- Grid responsivo de cartões de cidade -->
+    <div class="cities-grid">
+        <!-- Ouro Preto: imagem local em img/cidades/ouro-preto.jpg -->
+        <a class="cidade-card cidade-card-ouro-preto" href="../cidade.html?nome=Ouro%20Preto">
+            <div class="overlay"></div>
+            <div>
+                <h3>Ouro Preto</h3>
+                <p>Cidades barrocas, museus e arquitetura histórica.</p>
+            </div>
+        </a>
+
+        <!-- Tiradentes: imagem local em img/cidades/tiradentes.jpg -->
+        <a class="cidade-card cidade-card-tiradentes" href="../cidade.html?nome=Tiradentes">
+            <div class="overlay"></div>
+            <div>
+                <h3>Tiradentes</h3>
+                <p>Ruas de pedra, gastronomia e trilhas próximas.</p>
+            </div>
+        </a>
+
+        <!-- Mariana: imagem local em img/cidades/mariana.jpg -->
+        <a class="cidade-card cidade-card-mariana" href="../cidade.html?nome=Mariana">
+            <div class="overlay"></div>
+            <div>
+                <h3>Mariana</h3>
+                <p>Patrimônio histórico e igrejas centenárias.</p>
+            </div>
+        </a>
+
+        <!-- Diamantina: imagem local em img/cidades/diamantina.jpg -->
+        <a class="cidade-card cidade-card-diamantina" href="../cidade.html?nome=Diamantina">
+            <div class="overlay"></div>
+            <div>
+                <h3>Diamantina</h3>
+                <p>Cultura, caminhos históricos e música popular.</p>
+            </div>
+        </a>
+
+        <!-- São João del-Rei: imagem local em img/cidades/sao-joao-del-rei.jpg -->
+        <a class="cidade-card cidade-card-sao-joao-del-rei" href="../cidade.html?nome=São%20João%20del-Rei">
+            <div class="overlay"></div>
+            <div>
+                <h3>São João del-Rei</h3>
+                <p>Trilhos de maria-fumaça e memória histórica.</p>
+            </div>
+        </a>
+
+        <!-- Congonhas: imagem local em img/cidades/congonhas.jpg -->
+        <a class="cidade-card cidade-card-congonhas" href="../cidade.html?nome=Congonhas">
+            <div class="overlay"></div>
+            <div>
+                <h3>Congonhas</h3>
+                <p>Santuário do Bom Jesus e esculturas famosas.</p>
+            </div>
+        </a>
+    </div>
+</section>
+
+<section style="max-width:1000px;margin:24px auto;padding:0 16px;">
+    <h3 style="color:#333;margin-bottom:12px;">Viagens nesta categoria</h3>
+    <div id="category-trips" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;"></div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="../js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', ()=>{
+    const container = document.getElementById('category-trips');
+    if (!container) return;
+    async function renderCategoryTrips(){
+        try {
+            const r = await fetch('/api/trips');
+            if (!r.ok) return;
+            const all = await r.json();
+            const trips = (all||[]).filter(t=>t.category==='cidades-historicas');
+            if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
+            function slug(name){ return (name||'').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+            function escUrl(u){ return (u||'').toString().replace(/'/g, "\\'"); }
+            container.innerHTML = '';
+            trips.forEach(t=>{
+                const s = slug(t.city||'');
+                const href = `../cidade.html?nome=${encodeURIComponent(t.city||'')}&date=${encodeURIComponent(t.date||'')}`;
+                const rawCover = t.coverImage || '';
+                const finalCover = rawCover ? (new RegExp('^(data:|https?:|/)','i').test(rawCover) ? rawCover : ('/' + rawCover)) : '';
+                const a = document.createElement('a');
+                a.className = 'cidade-card cidade-card-' + s;
+                a.href = href;
+                a.style.height = '200px';
+                if (finalCover) a.style.backgroundImage = `url('${finalCover.replace(/'/g, "\\'")}')`;
+                const ov = document.createElement('div'); ov.className='overlay'; a.appendChild(ov);
+                const inner = document.createElement('div');
+                const h = document.createElement('h3'); h.textContent = t.city||'Destino';
+                const p = document.createElement('p'); p.textContent = t.city || '';
+                inner.appendChild(h); inner.appendChild(p);
+                if (t.description) { const pd = document.createElement('p'); pd.style.marginTop='8px'; pd.style.color='#fff'; pd.textContent = t.description; inner.appendChild(pd); }
+                a.appendChild(inner);
+                container.appendChild(a);
+            });
+        } catch(e) { /* ignore */ }
+    }
+    renderCategoryTrips();
+    window.addEventListener('storage', (e)=>{ if (e.key === 'natrip_admin_trips_updated_at') renderCategoryTrips(); });
+});
+</script>
+</body>
+</html>

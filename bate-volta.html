@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Bate-Volta | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- estilos de página padronizados via css/style.css -->
+</head>
+<body>
+
+<!-- header injected by js/main.js -->
+
+<div class="carousel-container">
+    <div class="carousel" id="city-carousel">
+        <div id="carousel-availability" class="carousel-availability" style="display:none">Vagas: --</div>
+        <button class="carousel-btn prev" onclick="changeSlide(-1)">❮</button>
+        <button class="carousel-btn next" onclick="changeSlide(1)">❯</button>
+        <div class="carousel-indicators" id="carousel-indicators"></div>
+    <!-- Grid responsivo de cartões de cidade -->
+    <div class="cities-grid">
+
+<section class="page-content">
+
+<section style="max-width:1000px;margin:24px auto;padding:0 16px;">
+    <h3 style="color:#333;margin-bottom:12px;">Viagens Bate-Volta</h3>
+    <div id="category-trips" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;"></div>
+</section>
+    <div>
+        <h1>Bate-Volta de Carro</h1>
+        <p>Roteiros rápidos para aproveitar o dia e voltar à noite.</p>
+        <script>
+        document.addEventListener('DOMContentLoaded', ()=>{
+            const container = document.getElementById('category-trips');
+            if (!container) return;
+            const renderCategoryTrips = async ()=>{
+                try {
+                    const r = await fetch('/api/trips'); if (!r.ok) return; const all = await r.json();
+                    const trips = (all||[]).filter(t=>t.category==='bate-volta');
+                    if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
+                    function escUrl(u){ return (u||'').toString().replace(/'/g, "'" ); }
+                    container.innerHTML = '';
+                    trips.forEach(t=>{
+                        const rawCover = t.coverImage || '';
+                        const finalCover = rawCover ? (new RegExp('^(data:|https?:|/)','i').test(rawCover) ? rawCover : ('/' + rawCover)) : '';
+                        const defaultImg = `img/cidades/${(t.city||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}/img1.jfif`;
+                        const img = finalCover ? finalCover : defaultImg;
+                        const href = `cidade.html?nome=${encodeURIComponent(t.city||'')}&date=${encodeURIComponent(t.date||'')}`;
+                        const a = document.createElement('a');
+                        a.className = 'cidade-card';
+                        a.href = href;
+                        a.style.height = '200px';
+                        if (img) a.style.backgroundImage = `url('${img.replace(/'/g, "\\'" )}')`;
+                        const ov = document.createElement('div'); ov.className='overlay'; a.appendChild(ov);
+                        const inner = document.createElement('div');
+                        const h = document.createElement('h3'); h.textContent = t.city||'Destino';
+                        const p = document.createElement('p'); p.textContent = t.city || '';
+                        inner.appendChild(h); inner.appendChild(p);
+                        if (t.description) { const pd = document.createElement('p'); pd.style.marginTop='8px'; pd.style.color='#fff'; pd.textContent = t.description; inner.appendChild(pd); }
+                        a.appendChild(inner);
+                        container.appendChild(a);
+                    });
+                } catch(e) {}
+            };
+            renderCategoryTrips();
+            window.addEventListener('storage', (e)=>{ if (e.key === 'natrip_admin_trips_updated_at') renderCategoryTrips(); });
+        });
+        </script>
+        <h3>Pontos de interesse</h3>
+        <ul>
+            <li>Mirante do Vale</li>
+            <li>Roteiro gastronômico</li>
+            <li>Trilhas curtas</li>
+        </ul>
+    </div>
+
+    <div class="booking-card">
+        <h3>Agendar Viagem</h3>
+        <p id="booking-user-note">Você não está logado. <a href="perfil.html">Faça login</a> para agendar com seus dados.</p>
+        <p id="availability-note" style="color:#666;font-size:0.95rem;margin:6px 0 10px;"></p>
+        <input id="booking-date" type="date">
+        <div id="reserved-dates" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;"></div>
+        <input id="booking-seats" type="number" min="1" value="1">
+        <textarea id="booking-notes" rows="3" placeholder="Observações (opcional)"></textarea>
+        <button id="booking-submit" class="btn-agendar">Agendar</button>
+        <p class="form-msg" id="booking-msg"></p>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const gallery = [
+        'img/bate-volta/img1.jpg',
+        'img/bate-volta/img2.jpg',
+        'img/bate-volta/img3.jpg',
+        'img/bate-volta/img4.jpg'
+    ];
+
+    initCarousel(gallery);
+
+    const bookingMsg = document.getElementById('booking-msg');
+    const bookingNote = document.getElementById('booking-user-note');
+    const dateInput = document.getElementById('booking-date');
+    const seatsInput = document.getElementById('booking-seats');
+    const availabilityNote = document.getElementById('availability-note');
+    const auth = window.natripAuth;
+    const bookingBtn = document.getElementById('booking-submit');
+    function refreshAuthState() { const cur = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null'); if (cur) { bookingNote.textContent = `Reservando como: ${cur.name} (${cur.email})`; if (bookingBtn) bookingBtn.disabled = false; } else { bookingNote.innerHTML = 'Você não está logado. <a href="perfil.html">Faça login</a> para agendar com seus dados.'; if (bookingBtn) bookingBtn.disabled = true; } }
+    refreshAuthState(); window.addEventListener('storage', (e) => { if (e.key === 'natrip_currentUser') refreshAuthState(); });
+
+    const storageKey = 'natrip_bookings_Bate_Volta';
+    function getCityBookings() { try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch(e) { return []; } }
+
+    function updateAvailability(date) {
+        if (!seatsInput) return;
+        if (!date) { availabilityNote.textContent = 'Escolha uma data para ver disponibilidade.'; seatsInput.max = 4; seatsInput.disabled = false; return; }
+        const bookings = getCityBookings();
+        const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
+        const available = Math.max(0, 4 - occupied);
+        availabilityNote.textContent = available > 0 ? `Vagas restantes para ${date}: ${available}` : `Sem vagas para ${date}.`;
+        seatsInput.max = available > 0 ? available : 0;
+        if (available === 0) { seatsInput.value = 0; seatsInput.disabled = true; } else { seatsInput.disabled = false; if ((parseInt(seatsInput.value,10)||0) > available) seatsInput.value = available; }
+    }
+
+    function updateCarouselAvailability(date) {
+        const el = document.getElementById('carousel-availability');
+        if (!el) return;
+        if (!date) { el.style.display = 'none'; return; }
+        const bookings = getCityBookings();
+        const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
+        const available = Math.max(0, 4 - occupied);
+        el.textContent = available > 0 ? `Vagas: ${available}` : 'Sem vagas';
+        el.style.display = 'inline-block';
+    }
+
+    if (dateInput) {
+        dateInput.addEventListener('change', (e) => { updateAvailability(e.target.value); updateCarouselAvailability(e.target.value); bookingMsg.textContent = ''; renderReservedDates(); });
+        if (dateInput.value) { updateAvailability(dateInput.value); updateCarouselAvailability(dateInput.value); renderReservedDates(); } else { updateCarouselAvailability(new Date().toISOString().slice(0,10)); renderReservedDates(); }
+    }
+
+    // reserved dates UI
+    const reservedDatesContainer = document.getElementById('reserved-dates');
+    function renderReservedDates() {
+        if (!reservedDatesContainer) return;
+        let currentUser = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        if (!currentUser) { reservedDatesContainer.innerHTML = ''; return; }
+        const reserved = (window.natripAuth && window.natripAuth.getUserReservedDates) ? window.natripAuth.getUserReservedDates(currentUser.email) : JSON.parse(localStorage.getItem(`natrip_reserved_dates_${currentUser.email}`) || '[]');
+        reservedDatesContainer.innerHTML = reserved.map(d => `<button class="reserved-date-badge" data-date="${d}">${d}</button>`).join('') || '';
+        reservedDatesContainer.querySelectorAll('.reserved-date-badge').forEach(b => {
+            const d = b.dataset.date; if (dateInput && dateInput.value === d) b.classList.add('selected'); else b.classList.remove('selected');
+            b.addEventListener('click', (ev) => { const d2 = ev.currentTarget.dataset.date; if (!d2) return; dateInput.value = d2; dateInput.dispatchEvent(new Event('change')); reservedDatesContainer.querySelectorAll('.reserved-date-badge').forEach(x => x.classList.toggle('selected', x.dataset.date === d2)); });
+        });
+    }
+
+    document.getElementById('booking-submit').addEventListener('click', () => {
+        const date = dateInput.value; const seats = parseInt(seatsInput.value,10) || 1; const notes = document.getElementById('booking-notes').value.trim();
+        const currentUser = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        if (!currentUser) { bookingMsg.textContent = 'Faça login para agendar.'; bookingMsg.style.color = '#c33'; return; }
+        if (!date) { bookingMsg.textContent = 'Escolha uma data.'; bookingMsg.style.color = '#c33'; return; }
+        const bookings = getCityBookings(); const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
+        const available = Math.max(0, 4 - occupied);
+        if (available <= 0) { bookingMsg.textContent = 'Não há vagas para essa data.'; bookingMsg.style.color = '#c33'; return; }
+        if (seats < 1 || seats > available) { bookingMsg.textContent = `Informe entre 1 e ${available} pessoas.`; bookingMsg.style.color = '#c33'; return; }
+        const booking = { city: 'Bate-Volta', date, seats, notes, user: currentUser.email, created: new Date().toISOString() };
+        bookings.push(booking);
+        localStorage.setItem(storageKey, JSON.stringify(bookings));
+
+        // prepare checkout item and redirect to payment (default unit price 1.00)
+        (async () => {
+            let unit = 1.00;
+            try {
+                const r = await fetch('/api/trips');
+                if (r.ok) {
+                    const all = await r.json();
+                    const trip = all.find(t => t.city === 'Bate-Volta' && t.date === date) || all.find(t => t.category === 'bate-volta');
+                    if (trip && typeof trip.price !== 'undefined' && trip.price !== null) unit = parseFloat(trip.price);
+                }
+            } catch(e) {}
+            const checkoutItem = { ...booking, unitPrice: unit, totalValue: parseFloat((unit * (parseInt(booking.seats,10)||1)).toFixed(2)) };
+            localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
+            bookingMsg.textContent = 'Viagem agendada com sucesso! Redirecionando para Minhas Compras...'; bookingMsg.style.color = '#0a7';
+            setTimeout(()=>{ window.location.href = 'minhas-compras.html'; }, 800);
+        })();
+    });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Minhas Compras | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Minhas Compras</h2>
+           <!-- Lista de reservas/agendamentos do usuário -->
+           <div id="compras-list"></div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+// Exibe cards de agendamentos do usuário logado
+document.addEventListener('DOMContentLoaded', function() {
+    renderBookings();
+});
+
+function renderBookings() {
+    const comprasList = document.getElementById('compras-list');
+    const auth = window.natripAuth;
+    const current = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+    
+    if (!current) {
+        comprasList.innerHTML = '<p>Faça login para ver seus agendamentos.</p>';
+        return;
+    }
+
+    // Dados das cidades com preços base por pessoa
+    const cityData = {
+        'Ouro Preto': {
+            desc: 'Ouro Preto é famosa por sua arquitetura barroca, museus e igrejas históricas.',
+            img: 'https://images.unsplash.com/photo-1542261339-66a65b6e9e9c',
+            price: 1.00
+        },
+        'Tiradentes': {
+            desc: 'Tiradentes reúne ruas preservadas, cafés e gastronomia típica.',
+            img: 'https://images.unsplash.com/photo-1530639836704-68f1d6f2b5d8',
+            price: 1.00
+        },
+        'Mariana': {
+            desc: 'Mariana é vizinha de Ouro Preto, com história mineradora e belas igrejas.',
+            img: 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c3',
+            price: 1.00
+        },
+        'Diamantina': {
+            desc: 'Diamantina preserva tradição cultural e eventos musicais.',
+            img: 'https://images.unsplash.com/photo-1509395176047-4a66953fd231',
+            price: 1.00
+        },
+        'São João del-Rei': {
+            desc: 'Cidade histórica com forte tradição ferroviária e religiosa.',
+            img: 'https://images.unsplash.com/photo-1509395176047-4a66953fd231',
+            price: 1.00
+        },
+        'Congonhas': {
+            desc: 'Santuário do Senhor Bom Jesus de Matosinhos, com esculturas de Aleijadinho.',
+            img: 'https://images.unsplash.com/photo-1526481280698-3bfa7568a2b2',
+            price: 1.00
+        }
+    };
+
+    // determine if admin is viewing another user's bookings via query param
+    const params = new URLSearchParams(window.location.search);
+    const viewUser = params.get('user');
+    let targetEmail = current ? current.email : null;
+    let viewingAsAdmin = false;
+    if (viewUser && current) {
+        try {
+            const allUsers = auth.getUsers() || [];
+            const fullCurrent = allUsers.find(u => u.email === current.email);
+            if (fullCurrent && fullCurrent.role === 'admin') {
+                targetEmail = viewUser;
+                viewingAsAdmin = true;
+            }
+        } catch (e) {}
+    }
+
+    // Reúne agendamentos de todas as chaves relevantes (inclui chave global antiga e chaves por cidade)
+    let allBookings = [];
+    // chave global antiga
+    try {
+        const global = JSON.parse(localStorage.getItem('natrip_bookings') || '[]');
+        if (Array.isArray(global)) allBookings = allBookings.concat(global);
+    } catch(e) {}
+
+    // chaves por cidade que começam com 'natrip_bookings_'
+    Object.keys(localStorage).forEach(k => {
+        if (k.indexOf('natrip_bookings_') === 0) {
+            try {
+                const arr = JSON.parse(localStorage.getItem(k) || '[]');
+                if (Array.isArray(arr)) allBookings = allBookings.concat(arr);
+            } catch(e) {}
+        }
+    });
+
+    // Filtra apenas os agendamentos do usuário alvo (pode ser o próprio ou outro se admin estiver visualizando)
+    const meus = allBookings.filter(b => b.user === targetEmail);
+
+    if (!meus.length) {
+        comprasList.innerHTML = '<p>Você ainda não fez nenhum agendamento.</p>';
+        return;
+    }
+
+    // Agrupar por cidade e exibir contador por cidade
+    const grouped = meus.reduce((acc, b) => {
+        acc[b.city] = acc[b.city] || [];
+        acc[b.city].push(b);
+        return acc;
+    }, {});
+
+    let html = '';
+    Object.keys(grouped).forEach(cityName => {
+        const group = grouped[cityName];
+        const cityMeta = cityData[cityName] || { desc: '', img: '' };
+        html += `<h3 style="margin-top:8px;margin-bottom:6px;">${cityName} — ${group.length} reserva${group.length>1?'s':''}</h3>`;
+        group.forEach(b => {
+            const unit = (typeof b.unitPrice !== 'undefined' && b.unitPrice !== null) ? parseFloat(b.unitPrice) : (cityMeta.price||0);
+            const totalValue = (typeof b.totalValue !== 'undefined' && b.totalValue !== null) ? parseFloat(b.totalValue).toFixed(2) : ( (unit * (parseInt(b.seats) || 1)).toFixed(2) );
+            html += `
+            <div class="destino-card" style="background-image:url('${cityMeta.img}'); margin-bottom:14px; min-height:120px;">
+                <div class="overlay"></div>
+                <div style="position:relative;z-index:2;padding:14px;">
+                    <h2 style="font-size:1.05rem; margin-bottom:6px;">${b.city}</h2>
+                    <p style="font-size:0.92rem; margin-bottom:4px;">${cityMeta.desc}</p>
+                    <p style="font-size:0.9rem; color:#C85F00; margin-bottom:2px;">Data: <b>${b.date}</b> &nbsp; | &nbsp; Pessoas: <b>${b.seats}</b></p>
+                    <p style="font-size:0.92rem; color:#009900; margin-bottom:2px;">Valor Total: <b>R$ ${totalValue.replace('.',',')}</b></p>
+                    ${b.notes ? `<p style='font-size:0.9rem; color:#555;'>Obs: ${b.notes}</p>` : ''}
+                    <div style="margin-top:10px; display:flex; gap:10px;">
+                        ${!viewingAsAdmin ? `<button class="finalizar-btn" data-city="${b.city}" data-date="${b.date}" data-seats="${b.seats}" data-total="${totalValue}" style="padding:8px 14px;border-radius:8px;background:linear-gradient(135deg,#E76F00,#C85F00);color:#fff;border:none;cursor:pointer;font-size:0.95rem;">Finalizar compra</button>
+                        <button class="remover-btn" data-city="${b.city}" data-date="${b.date}" data-seats="${b.seats}" style="padding:8px 14px;border-radius:8px;background:#d9534f;color:#fff;border:none;cursor:pointer;font-size:0.95rem;">Remover</button>` : `<em style="color:#666;">Visualização (admin)</em>`}
+                    </div>
+                </div>
+            </div>
+            `;
+        });
+    });
+    // if viewing as admin for a specific user, prepend info
+    if (viewingAsAdmin) {
+        html = `<p>Visualizando viagens de <strong>${targetEmail}</strong>. <a href="admin-usuarios.html">Voltar à lista</a></p>` + html;
+    }
+    comprasList.innerHTML = html;
+
+    // Adiciona evento aos botões
+    document.querySelectorAll('.finalizar-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const city = this.dataset.city;
+            const date = this.dataset.date;
+            const seats = this.dataset.seats;
+            const total = this.dataset.total;
+            const item = meus.find(b => b.city === city && b.date === date && String(b.seats) === String(seats) && b.user === targetEmail);
+            if (!item) return alert('Item não encontrado.');
+            const checkoutItem = { ...item, totalValue: parseFloat(total) };
+            localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
+            window.location.href = 'pagamento.html';
+        });
+    });
+
+    document.querySelectorAll('.remover-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const city = this.dataset.city;
+            const date = this.dataset.date;
+            const seats = this.dataset.seats;
+            const bookingToRemove = meus.find(b => b.city === city && b.date === date && String(b.seats) === String(seats) && b.user === targetEmail);
+            if (!bookingToRemove) return alert('Item não encontrado para remoção.');
+            removeBooking(bookingToRemove);
+        });
+    });
+}
+
+function removeBooking(bookingItem) {
+    if(!confirm('Tem certeza que deseja remover este item?')) return;
+    // Tenta remover tanto da chave global antiga quanto da chave específica da cidade
+    const cityKey = `natrip_bookings_${bookingItem.city.replace(/\s+/g, '_')}`;
+
+    // Função auxiliar para tentar remover em uma chave
+    function tryRemoveFromKey(key) {
+        try {
+            const arr = JSON.parse(localStorage.getItem(key) || '[]');
+            if (!Array.isArray(arr)) return false;
+            const idx = arr.findIndex(item => 
+                item.user === bookingItem.user &&
+                item.city === bookingItem.city &&
+                item.date === bookingItem.date &&
+                item.seats === bookingItem.seats
+            );
+            if (idx > -1) {
+                arr.splice(idx, 1);
+                localStorage.setItem(key, JSON.stringify(arr));
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    const removed = tryRemoveFromKey(cityKey) || tryRemoveFromKey('natrip_bookings');
+    if (removed) renderBookings();
+}
+</script>
+</body>
+</html>
