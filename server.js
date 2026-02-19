@@ -9,31 +9,70 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 
 const app = express();
-app.use(cors());
+
+// CORS configuration - allow all origins in development, configure for production
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*')
+    : '*',
+  credentials: true
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
+
 // Servir arquivos estáticos (HTML/CSS/JS) a partir da raiz do projeto
 app.use(express.static(path.join(__dirname)));
 
 // MySQL connection pool
-const pool = mysql.createPool({
+const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'natrip',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  connectTimeout: 10000
+};
+
+console.log('Database configuration:', {
+  host: dbConfig.host,
+  user: dbConfig.user,
+  database: dbConfig.database,
+  hasPassword: !!dbConfig.password
 });
 
-// Test database connection
-pool.getConnection()
-  .then(connection => {
-    console.log('MySQL connected successfully');
-    connection.release();
-  })
-  .catch(err => {
-    console.error('MySQL connection error:', err);
-  });
+const pool = mysql.createPool(dbConfig);
+
+// Test database connection with retry
+let dbConnected = false;
+async function testDbConnection(retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const connection = await pool.getConnection();
+      console.log('✓ MySQL connected successfully');
+      dbConnected = true;
+      connection.release();
+      return true;
+    } catch (err) {
+      console.error(`✗ MySQL connection error (attempt ${i + 1}/${retries}):`, err.message);
+      if (i < retries - 1) {
+        console.log('Retrying in 2 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+  }
+  console.error('Failed to connect to MySQL after', retries, 'attempts');
+  return false;
+}
+
+testDbConnection();
 
 // Initialize database tables
 (async () => {
@@ -245,6 +284,27 @@ app.post('/api/banners/delete', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+    connection.release();
+    res.json({ 
+      status: 'ok', 
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      version: '1.1'
+    });
+  } catch (err) {
+    res.status(503).json({ 
+      status: 'error', 
+      database: 'disconnected',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 function sanitizeUser(u) {
   if (!u) return u;
   return {
@@ -292,24 +352,36 @@ app.post('/api/signup', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'email e password obrigatórios' });
+  console.log('Login attempt for:', email);
+  
+  if (!email || !password) {
+    console.log('Login failed: missing credentials');
+    return res.status(400).json({ error: 'email e password obrigatórios' });
+  }
   
   try {
     const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    console.log('Users found:', rows.length);
     
     if (rows.length === 0) {
+      console.log('Login failed: user not found');
       return res.status(400).json({ error: 'E-mail ou senha inválidos' });
     }
     
     const user = rows[0];
-    if (!bcrypt.compareSync(password, user.password || '')) {
+    const passwordMatch = bcrypt.compareSync(password, user.password || '');
+    console.log('Password match:', passwordMatch);
+    
+    if (!passwordMatch) {
+      console.log('Login failed: invalid password');
       return res.status(400).json({ error: 'E-mail ou senha inválidos' });
     }
     
+    console.log('Login successful for:', email);
     res.json(sanitizeUser(user));
   } catch (err) {
-    console.error('Error logging in:', err);
-    res.status(500).json({ error: 'Erro no login' });
+    console.error('Error logging in:', err.message);
+    res.status(500).json({ error: 'Erro no login', details: err.message });
   }
 });
 
