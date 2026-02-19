@@ -5,7 +5,7 @@ const fs = require('fs');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const fetch = global.fetch || require('node-fetch');
-const { Pool } = require('pg');
+const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 
 const app = express();
@@ -29,48 +29,57 @@ app.use((req, res, next) => {
 // Servir arquivos estáticos (HTML/CSS/JS) a partir da raiz do projeto
 app.use(express.static(path.join(__dirname)));
 
-// PostgreSQL connection pool
+// MySQL connection pool
 const dbConfig = {
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 10,
-  connectionTimeoutMillis: 10000,
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'natrip',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  connectTimeout: 10000
 };
 
 console.log('Database configuration:', {
-  hasConnectionString: !!process.env.DATABASE_URL,
-  ssl: dbConfig.ssl,
-  env: process.env.NODE_ENV
+  host: dbConfig.host,
+  user: dbConfig.user,
+  database: dbConfig.database,
+  hasPassword: !!dbConfig.password
 });
 
-const pool = new Pool(dbConfig);
+const pool = mysql.createPool(dbConfig);
 
 // Test database connection with retry
 let dbConnected = false;
 async function testDbConnection(retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const client = await pool.connect();
-      const result = await client.query('SELECT NOW()');
-      console.log('✓ PostgreSQL connected successfully');
-      console.log('  Server time:', result.rows[0].now);
+      const connection = await pool.getConnection();
+      console.log('✓ MySQL connected successfully');
+      console.log('  Host:', dbConfig.host);
+      console.log('  Database:', dbConfig.database);
       dbConnected = true;
-      client.release();
+      connection.release();
       return true;
     } catch (err) {
-      console.error(`✗ PostgreSQL connection error (attempt ${i + 1}/${retries}):`, err.message);
+      console.error(`✗ MySQL connection error (attempt ${i + 1}/${retries}):`, err.message);
       console.error('  Error code:', err.code);
+      console.error('  Host:', dbConfig.host);
+      console.error('  User:', dbConfig.user);
+      console.error('  Database:', dbConfig.database);
       if (i < retries - 1) {
         console.log('Retrying in 2 seconds...');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
   }
-  console.error('❌ CRITICAL: Failed to connect to PostgreSQL after', retries, 'attempts');
+  console.error('❌ CRITICAL: Failed to connect to MySQL after', retries, 'attempts');
   console.error('   Please verify:');
-  console.error('   1. DATABASE_URL environment variable is set correctly');
-  console.error('   2. PostgreSQL server is running and accessible');
-  console.error('   3. Network/firewall is not blocking the connection');
+  console.error('   1. MySQL server is running and accessible');
+  console.error('   2. Environment variables are set correctly (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)');
+  console.error('   3. MySQL allows external connections from this IP');
+  console.error('   4. Network/firewall is not blocking the connection');
   return false;
 }
 
@@ -79,12 +88,12 @@ testDbConnection();
 // Initialize database tables
 (async () => {
   try {
-    const client = await pool.connect();
+    const connection = await pool.getConnection();
     
     // Create users table
-    await client.query(`
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
+        id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255),
         cpf VARCHAR(20),
         phone VARCHAR(20),
@@ -93,20 +102,20 @@ testDbConnection();
         role VARCHAR(50),
         referralCode VARCHAR(20),
         source VARCHAR(255),
-        referredBy VARCHAR(20)
-      )
+        referredBy VARCHAR(20),
+        INDEX idx_email (email),
+        INDEX idx_referralCode (referralCode)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_referralCode ON users(referralCode)`);
 
     // Create trips table
-    await client.query(`
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS trips (
-        id SERIAL PRIMARY KEY,
+        id INT AUTO_INCREMENT PRIMARY KEY,
         city VARCHAR(255),
         date VARCHAR(50),
         category VARCHAR(100),
-        seats INTEGER,
+        seats INT,
         departureTime VARCHAR(50),
         returnTime VARCHAR(50),
         description TEXT,
@@ -114,61 +123,188 @@ testDbConnection();
         price DECIMAL(10,2),
         coverImage VARCHAR(500),
         createdBy VARCHAR(255),
-        createdAt VARCHAR(50)
-      )
+        createdAt VARCHAR(50),
+        INDEX idx_date (date),
+        INDEX idx_category (category)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_trips_date ON trips(date)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_trips_category ON trips(category)`);
 
     // Create banners table
-    await client.query(`
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS banners (
-        id SERIAL PRIMARY KEY,
+        id INT AUTO_INCREMENT PRIMARY KEY,
         title VARCHAR(255),
         subtitle VARCHAR(255),
         category VARCHAR(100),
         image VARCHAR(500),
         link VARCHAR(500),
-        orderIndex INTEGER,
+        orderIndex INT,
         createdBy VARCHAR(255),
-        createdAt VARCHAR(50)
-      )
+        createdAt VARCHAR(50),
+        INDEX idx_order (orderIndex)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_banners_order ON banners(orderIndex)`);
 
     // Create admin user if it doesn't exist
     const adminEmail = 'admin@natrip.local';
     const adminPass = 'capela9797@';
-    const result = await client.query('SELECT id FROM users WHERE email = $1', [adminEmail]);
+    const [rows] = await connection.query('SELECT id FROM users WHERE email = ?', [adminEmail]);
     
-    if (result.rows.length === 0) {
+    if (rows.length === 0) {
       const hash = bcrypt.hashSync(adminPass, 10);
-      await client.query(
-        'INSERT INTO users (name, cpf, phone, email, password, role) VALUES ($1, $2, $3, $4, $5, $6)',
+      await connection.query(
+        'INSERT INTO users (name, cpf, phone, email, password, role) VALUES (?,?,?,?,?,?)',
         ['Admin', '00000000000', '0000000000', adminEmail, hash, 'admin']
       );
       console.log('Admin user created');
     }
     
-    client.release();
+    connection.release();
     console.log('Database tables initialized');
   } catch (err) {
     console.error('Error initializing database:', err);
   }
 })();
 
+// trips endpoints
+app.get('/api/trips', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id,city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt FROM trips ORDER BY date');
+    const parsed = (rows||[]).map(r => {
+      try {
+        r.points = r.points ? JSON.parse(r.points) : [];
+      } catch(e) {
+        if (typeof r.points === 'string' && r.points.trim()) {
+          r.points = r.points.split(/\r?\n|,/) .map(s=>s.trim()).filter(Boolean);
+        } else r.points = [];
+      }
+      return r;
+    });
+    res.json(parsed);
+  } catch (err) {
+    console.error('Error fetching trips:', err);
+    res.status(500).json({ error: 'Erro ao ler viagens' });
+  }
+});
+
+// upsert array of trips: insert new or update existing by id
+app.post('/api/trips/upsert', async (req, res) => {
+  const trips = Array.isArray(req.body.trips) ? req.body.trips : [];
+  if (trips.length === 0) return res.json({ ok: true });
+  
+  try {
+    for (const t of trips) {
+      const dep = t.departureTime || t.departure || '';
+      const ret = t.returnTime || t.return || '';
+      const desc = t.description || t.desc || '';
+      const category = t.category || '';
+      const cover = t.coverImage || '';
+      let pointsVal = '';
+      if (Array.isArray(t.points)) pointsVal = JSON.stringify(t.points);
+      else if (typeof t.points === 'string') pointsVal = t.points;
+      else pointsVal = '';
+      const price = (typeof t.price !== 'undefined' && t.price !== null && t.price !== '') ? parseFloat(t.price) : null;
+      
+      if (t.id) {
+        await pool.query(
+          'UPDATE trips SET city=?, date=?, category=?, seats=?, departureTime=?, returnTime=?, description=?, points=?, price=?, coverImage=?, createdBy=?, createdAt=? WHERE id=?',
+          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'', t.id]
+        );
+      } else {
+        await pool.query(
+          'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'']
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error upserting trips:', err);
+    res.status(500).json({ error: 'Erro ao salvar viagens' });
+  }
+});
+
+app.post('/api/trips/delete', async (req, res) => {
+  const id = req.body && req.body.id;
+  if (!id) return res.status(400).json({ error: 'id obrigatório' });
+  
+  try {
+    await pool.query('DELETE FROM trips WHERE id = ?', [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting trip:', err);
+    res.status(500).json({ error: 'Erro ao deletar viagem' });
+  }
+});
+
+// banners endpoints
+app.get('/api/banners', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT id,title,subtitle,category,image,link,orderIndex,createdBy,createdAt FROM banners ORDER BY COALESCE(orderIndex,0), id');
+    res.json(rows || []);
+  } catch (err) {
+    console.error('Error fetching banners:', err);
+    res.status(500).json({ error: 'Erro ao ler banners' });
+  }
+});
+
+app.post('/api/banners/upsert', async (req, res) => {
+  const banners = Array.isArray(req.body.banners) ? req.body.banners : [];
+  if (banners.length === 0) return res.json({ ok: true });
+  
+  try {
+    for (const b of banners) {
+      const title = b.title || '';
+      const subtitle = b.subtitle || '';
+      const category = b.category || '';
+      const image = b.image || '';
+      const link = b.link || '';
+      const orderIndex = (typeof b.orderIndex !== 'undefined' && b.orderIndex !== null) ? parseInt(b.orderIndex,10) : null;
+      const createdBy = b.createdBy || '';
+      const createdAt = b.createdAt || new Date().toISOString();
+      
+      if (b.id) {
+        await pool.query(
+          'UPDATE banners SET title=?, subtitle=?, category=?, image=?, link=?, orderIndex=?, createdBy=?, createdAt=? WHERE id=?',
+          [title, subtitle, category, image, link, orderIndex, createdBy, createdAt, b.id]
+        );
+      } else {
+        await pool.query(
+          'INSERT INTO banners (title,subtitle,category,image,link,orderIndex,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?)',
+          [title, subtitle, category, image, link, orderIndex, createdBy, createdAt]
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error upserting banners:', err);
+    res.status(500).json({ error: 'Erro ao salvar banners' });
+  }
+});
+
+app.post('/api/banners/delete', async (req, res) => {
+  const id = req.body && req.body.id;
+  if (!id) return res.status(400).json({ error: 'id obrigatório' });
+  
+  try {
+    await pool.query('DELETE FROM banners WHERE id = ?', [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting banner:', err);
+    res.status(500).json({ error: 'Erro ao deletar banner' });
+  }
+});
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    const client = await pool.connect();
-    await client.query('SELECT 1');
-    client.release();
+    const connection = await pool.getConnection();
+    connection.release();
     res.json({ 
       status: 'ok', 
       database: 'connected',
       timestamp: new Date().toISOString(),
-      version: '1.2.0',
-      dbType: 'PostgreSQL'
+      version: '1.1'
     });
   } catch (err) {
     res.status(503).json({ 
@@ -194,8 +330,8 @@ function sanitizeUser(u) {
 
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id,name,cpf,phone,email,role FROM users');
-    res.json(result.rows.map(r => sanitizeUser(r)));
+    const [rows] = await pool.query('SELECT id,name,cpf,phone,email,role FROM users');
+    res.json(rows.map(r => sanitizeUser(r)));
   } catch (err) {
     console.error('Error fetching users:', err);
     res.status(500).json({ error: 'Erro ao ler usuários' });
@@ -208,17 +344,17 @@ app.post('/api/signup', async (req, res) => {
   
   try {
     const hash = bcrypt.hashSync(password, 10);
-    const result = await pool.query(
-      'INSERT INTO users (name, cpf, phone, email, password, role, source, referredBy) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+    const [result] = await pool.query(
+      'INSERT INTO users (name, cpf, phone, email, password, role, source, referredBy) VALUES (?,?,?,?,?,?,?,?)',
       [name || '', cpf || '', phone || '', email.toLowerCase(), hash, 'user', source || '', referredBy || '']
     );
     
-    const userResult = await pool.query(
-      'SELECT id,name,cpf,phone,email,role FROM users WHERE id = $1',
-      [result.rows[0].id]
+    const [rows] = await pool.query(
+      'SELECT id,name,cpf,phone,email,role FROM users WHERE id = ?',
+      [result.insertId]
     );
     
-    res.json(sanitizeUser(userResult.rows[0]));
+    res.json(sanitizeUser(rows[0]));
   } catch (err) {
     console.error('Error signing up:', err);
     res.status(400).json({ error: 'Não foi possível criar usuário (talvez e-mail já exista)' });
@@ -236,28 +372,28 @@ app.post('/api/login', async (req, res) => {
   
   try {
     // Test database connection first
-    let client;
+    let connection;
     try {
-      client = await pool.connect();
-      client.release();
+      connection = await pool.getConnection();
+      connection.release();
     } catch (dbErr) {
       console.error('Database connection failed:', dbErr.message);
       console.error('Error code:', dbErr.code);
       return res.status(503).json({ 
-        error: 'Banco de dados indisponível. Verifique a configuração do PostgreSQL.',
+        error: 'Banco de dados indisponível. Verifique a configuração do MySQL.',
         details: process.env.NODE_ENV === 'production' ? 'Database unavailable' : dbErr.message
       });
     }
     
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
-    console.log('Users found:', result.rows.length);
+    const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    console.log('Users found:', rows.length);
     
-    if (result.rows.length === 0) {
+    if (rows.length === 0) {
       console.log('Login failed: user not found');
       return res.status(400).json({ error: 'E-mail ou senha inválidos' });
     }
     
-    const user = result.rows[0];
+    const user = rows[0];
     const passwordMatch = bcrypt.compareSync(password, user.password || '');
     console.log('Password match:', passwordMatch);
     
@@ -279,7 +415,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Upsert array of users
+// Upsert array of users (used by client-side sync). This will insert or update records by email.
 app.post('/api/users/upsert', async (req, res) => {
   const users = Array.isArray(req.body.users) ? req.body.users : [];
   if (users.length === 0) return res.json({ ok: true });
@@ -289,27 +425,25 @@ app.post('/api/users/upsert', async (req, res) => {
       const email = (u.email || '').toLowerCase();
       if (!email) continue;
       
-      const existing = await pool.query('SELECT id,password FROM users WHERE email = $1', [email]);
+      const [existing] = await pool.query('SELECT id,password FROM users WHERE email = ?', [email]);
       const passwd = (u.password || '');
       
-      if (existing.rows.length > 0) {
-        // update
+      if (existing.length > 0) {
+        // update (if password provided, hash it)
+        let updateSql = 'UPDATE users SET name=?, cpf=?, phone=?, role=?';
+        const params = [u.name||'', u.cpf||'', u.phone||'', u.role||'user'];
         if (passwd) {
           const h = bcrypt.hashSync(passwd, 10);
-          await pool.query(
-            'UPDATE users SET name=$1, cpf=$2, phone=$3, role=$4, password=$5 WHERE email=$6',
-            [u.name||'', u.cpf||'', u.phone||'', u.role||'user', h, email]
-          );
-        } else {
-          await pool.query(
-            'UPDATE users SET name=$1, cpf=$2, phone=$3, role=$4 WHERE email=$5',
-            [u.name||'', u.cpf||'', u.phone||'', u.role||'user', email]
-          );
+          updateSql += ', password=?'; 
+          params.push(h);
         }
+        updateSql += ' WHERE email=?'; 
+        params.push(email);
+        await pool.query(updateSql, params);
       } else {
         const h = passwd ? bcrypt.hashSync(passwd, 10) : bcrypt.hashSync('pwd'+Date.now(), 10);
         await pool.query(
-          'INSERT INTO users (name,cpf,phone,email,password,role) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (email) DO NOTHING',
+          'INSERT IGNORE INTO users (name,cpf,phone,email,password,role) VALUES (?,?,?,?,?,?)',
           [u.name||'', u.cpf||'', u.phone||'', email, h, u.role||'user']
         );
       }
@@ -321,137 +455,9 @@ app.post('/api/users/upsert', async (req, res) => {
   }
 });
 
-// trips endpoints
-app.get('/api/trips', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id,city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt FROM trips ORDER BY date');
-    const parsed = (result.rows||[]).map(r => {
-      try {
-        r.points = r.points ? JSON.parse(r.points) : [];
-      } catch(e) {
-        if (typeof r.points === 'string' && r.points.trim()) {
-          r.points = r.points.split(/\r?\n|,/) .map(s=>s.trim()).filter(Boolean);
-        } else r.points = [];
-      }
-      return r;
-    });
-    res.json(parsed);
-  } catch (err) {
-    console.error('Error fetching trips:', err);
-    res.status(500).json({ error: 'Erro ao ler viagens' });
-  }
-});
-
-app.post('/api/trips/upsert', async (req, res) => {
-  const trips = Array.isArray(req.body.trips) ? req.body.trips : [];
-  if (trips.length === 0) return res.json({ ok: true });
-  
-  try {
-    for (const t of trips) {
-      const dep = t.departureTime || t.departure || '';
-      const ret = t.returnTime || t.return || '';
-      const desc = t.description || t.desc || '';
-      const category = t.category || '';
-      const cover = t.coverImage || '';
-      let pointsVal = '';
-      if (Array.isArray(t.points)) pointsVal = JSON.stringify(t.points);
-      else if (typeof t.points === 'string') pointsVal = t.points;
-      else pointsVal = '';
-      const price = (typeof t.price !== 'undefined' && t.price !== null && t.price !== '') ? parseFloat(t.price) : null;
-      
-      if (t.id) {
-        await pool.query(
-          'UPDATE trips SET city=$1, date=$2, category=$3, seats=$4, departureTime=$5, returnTime=$6, description=$7, points=$8, price=$9, coverImage=$10, createdBy=$11, createdAt=$12 WHERE id=$13',
-          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'', t.id]
-        );
-      } else {
-        await pool.query(
-          'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'']
-        );
-      }
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Error upserting trips:', err);
-    res.status(500).json({ error: 'Erro ao salvar viagens' });
-  }
-});
-
-app.post('/api/trips/delete', async (req, res) => {
-  const id = req.body && req.body.id;
-  if (!id) return res.status(400).json({ error: 'id obrigatório' });
-  
-  try {
-    await pool.query('DELETE FROM trips WHERE id = $1', [id]);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Error deleting trip:', err);
-    res.status(500).json({ error: 'Erro ao deletar viagem' });
-  }
-});
-
-// banners endpoints
-app.get('/api/banners', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id,title,subtitle,category,image,link,orderIndex,createdBy,createdAt FROM banners ORDER BY COALESCE(orderIndex,0), id');
-    res.json(result.rows || []);
-  } catch (err) {
-    console.error('Error fetching banners:', err);
-    res.status(500).json({ error: 'Erro ao ler banners' });
-  }
-});
-
-app.post('/api/banners/upsert', async (req, res) => {
-  const banners = Array.isArray(req.body.banners) ? req.body.banners : [];
-  if (banners.length === 0) return res.json({ ok: true });
-  
-  try {
-    for (const b of banners) {
-      const title = b.title || '';
-      const subtitle = b.subtitle || '';
-      const category = b.category || '';
-      const image = b.image || '';
-      const link = b.link || '';
-      const orderIndex = (typeof b.orderIndex !== 'undefined' && b.orderIndex !== null) ? parseInt(b.orderIndex,10) : null;
-      const createdBy = b.createdBy || '';
-      const createdAt = b.createdAt || new Date().toISOString();
-      
-      if (b.id) {
-        await pool.query(
-          'UPDATE banners SET title=$1, subtitle=$2, category=$3, image=$4, link=$5, orderIndex=$6, createdBy=$7, createdAt=$8 WHERE id=$9',
-          [title, subtitle, category, image, link, orderIndex, createdBy, createdAt, b.id]
-        );
-      } else {
-        await pool.query(
-          'INSERT INTO banners (title,subtitle,category,image,link,orderIndex,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-          [title, subtitle, category, image, link, orderIndex, createdBy, createdAt]
-        );
-      }
-    }
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Error upserting banners:', err);
-    res.status(500).json({ error: 'Erro ao salvar banners' });
-  }
-});
-
-app.post('/api/banners/delete', async (req, res) => {
-  const id = req.body && req.body.id;
-  if (!id) return res.status(400).json({ error: 'id obrigatório' });
-  
-  try {
-    await pool.query('DELETE FROM banners WHERE id = $1', [id]);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Error deleting banner:', err);
-    res.status(500).json({ error: 'Erro ao deletar banner' });
-  }
-});
-
-// Generate random referral code
+// Generate random referral code (8 characters: letters and numbers)
 function generateReferralCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid confusing chars like 0,O,1,I
   let code = '';
   for (let i = 0; i < 8; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -466,24 +472,26 @@ app.get('/api/referral-code', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'email obrigatório' });
   
   try {
-    const result = await pool.query('SELECT referralCode FROM users WHERE email = $1', [email.toLowerCase()]);
+    const [rows] = await pool.query('SELECT referralCode FROM users WHERE email = ?', [email.toLowerCase()]);
     
-    if (result.rows.length === 0) {
+    if (rows.length === 0) {
       console.log('User not found:', email);
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
     
-    const user = result.rows[0];
-    console.log('User found, referralCode:', user.referralcode);
+    const user = rows[0];
+    console.log('User found, referralCode:', user.referralCode);
     
-    if (user.referralcode) {
-      return res.json({ referralCode: user.referralcode });
+    // If user already has a referral code, return it
+    if (user.referralCode) {
+      return res.json({ referralCode: user.referralCode });
     }
     
+    // Generate new code and save it
     const newCode = generateReferralCode();
     console.log('Generating new code:', newCode);
     
-    await pool.query('UPDATE users SET referralCode = $1 WHERE email = $2', [newCode, email.toLowerCase()]);
+    await pool.query('UPDATE users SET referralCode = ? WHERE email = ?', [newCode, email.toLowerCase()]);
     console.log('Code saved successfully');
     res.json({ referralCode: newCode });
   } catch (err) {
@@ -498,17 +506,19 @@ app.get('/api/referrals', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'email obrigatório' });
   
   try {
-    const userResult = await pool.query('SELECT referralCode FROM users WHERE email = $1', [email.toLowerCase()]);
+    // First get the user's referral code
+    const [userRows] = await pool.query('SELECT referralCode FROM users WHERE email = ?', [email.toLowerCase()]);
     
-    if (userResult.rows.length === 0 || !userResult.rows[0].referralcode) {
+    if (userRows.length === 0 || !userRows[0].referralCode) {
       return res.json({ count: 0, referrals: [] });
     }
     
-    const referralResult = await pool.query('SELECT name, email, id FROM users WHERE referredBy = $1', [userResult.rows[0].referralcode]);
+    // Then find all users who signed up with this referral code
+    const [referralRows] = await pool.query('SELECT name, email, id FROM users WHERE referredBy = ?', [userRows[0].referralCode]);
     
     res.json({
-      count: referralResult.rows.length,
-      referrals: referralResult.rows.map(r => ({ id: r.id, name: r.name, email: r.email }))
+      count: referralRows.length,
+      referrals: referralRows.map(r => ({ id: r.id, name: r.name, email: r.email }))
     });
   } catch (err) {
     console.error('Error fetching referrals:', err);
