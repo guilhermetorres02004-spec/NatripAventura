@@ -35,11 +35,88 @@
             <input id="signup-phone" type="tel" placeholder="Telefone" required>
             <input id="signup-email" type="email" placeholder="E-mail" required>
             <input id="signup-password" type="password" placeholder="Senha" required>
+            
+            <select id="signup-source" required style="width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: 'Poppins', sans-serif; color: #666;">
+                <option value="">Como conheceu nosso site?</option>
+                <option value="Amigo">Amigo</option>
+                <option value="Instagram">Instagram</option>
+                <option value="Facebook">Facebook</option>
+                <option value="Outros">Outros...</option>
+            </select>
+            
+            <input 
+                id="signup-referral-link" 
+                type="text" 
+                placeholder="Digite o código de convite (ex: EFKGWDEY)" 
+                style="display: none; width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-transform: uppercase;"
+            >
+            
+            <input 
+                id="signup-source-other" 
+                type="text" 
+                placeholder="Por favor, especifique" 
+                style="display: none; width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            >
+            
             <button type="submit">Criar Conta</button>
             <p class="form-msg" id="signup-msg"></p>
         </form>
     </div>
 </section>
+
+<script>
+    // Mostrar campos apropriados quando a fonte é alterada
+    document.getElementById('signup-source').addEventListener('change', function() {
+        const otherField = document.getElementById('signup-source-other');
+        const referralField = document.getElementById('signup-referral-link');
+        
+        // Esconde todos os campos extras
+        otherField.style.display = 'none';
+        otherField.required = false;
+        otherField.value = '';
+        
+        referralField.style.display = 'none';
+        referralField.required = false;
+        referralField.value = '';
+        
+        // Mostra o campo apropriado
+        if (this.value === 'Outros') {
+            otherField.style.display = 'block';
+            otherField.required = true;
+        } else if (this.value === 'Amigo') {
+            referralField.style.display = 'block';
+            referralField.required = false; // opcional
+        }
+    });
+    
+    // Preencher automaticamente se houver ?ref= na URL
+    window.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const refCode = urlParams.get('ref');
+        
+        if (refCode) {
+            const sourceSelect = document.getElementById('signup-source');
+            const referralField = document.getElementById('signup-referral-link');
+            
+            if (sourceSelect && referralField) {
+                // Seleciona "Amigo"
+                sourceSelect.value = 'Amigo';
+                
+                // Mostra o campo de referência
+                referralField.style.display = 'block';
+                
+                // Preenche apenas com o código
+                referralField.value = refCode.toUpperCase();
+                
+                // Scroll suave até o formulário de cadastro
+                const signupCard = document.querySelector('#signup-form').closest('.perfil-card');
+                if (signupCard) {
+                    signupCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+    });
+</script>
 
 <footer>
     <p>© 2026 Natrip Aventura</p>

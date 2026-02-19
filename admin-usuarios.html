@@ -11,6 +11,17 @@
 
 <!-- header injetado por js/main.js -->
 
+<!-- Modal para exibir lista de convidados -->
+<div id="referral-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; position: relative;">
+        <button onclick="closeReferralModal()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">×</button>
+        <h3 id="referral-modal-title" style="margin: 0 0 20px 0; color: #333;">Convidados</h3>
+        <div id="referral-modal-content">
+            <!-- Conteúdo será preenchido dinamicamente -->
+        </div>
+    </div>
+</div>
+
 <section class="perfil-container">
     <div class="perfil-card">
         <h2>Usuários Cadastrados</h2>
@@ -57,6 +68,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const ok = await loadUsers();
     if (!ok) return;
+    
+    // Carregar dados de convidados para todos os usuários
+    const referralCounts = {};
+    async function loadAllReferrals() {
+        const promises = users.map(async (u) => {
+            try {
+                const resp = await fetch(`/api/referrals?email=${encodeURIComponent(u.email)}`);
+                if (resp.ok) {
+                    const data = await resp.json();
+                    referralCounts[u.email] = data;
+                }
+            } catch (e) {
+                console.error('Error loading referrals for', u.email, e);
+            }
+        });
+        await Promise.all(promises);
+    }
+    
+    await loadAllReferrals();
 
     // Verifica role no registro completo retornado pelo servidor
     const full = users.find(u => u.email === current.email);
@@ -90,13 +120,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // renderiza tabela filtrando pela busca
     function render() {
-        const rows = users.map((u, i) => matches(u, searchQuery) ? `
+        const rows = users.map((u, i) => {
+            const refData = referralCounts[u.email] || { count: 0, referrals: [] };
+            return matches(u, searchQuery) ? `
             <tr data-index="${i}">
                 <td class="col-name">${u.name || ''}</td>
                 <td class="col-email">${u.email || ''}</td>
                 <td class="col-cpf">${u.cpf || ''}</td>
                 <td class="col-phone">${u.phone || ''}</td>
                 <td class="col-role">${u.role || 'user'}</td>
+                <td class="col-referrals" style="text-align: center;">
+                    <span style="font-weight: 600; color: #0a7;">${refData.count}</span>
+                    ${refData.count > 0 ? `<button class="icon-btn referral-btn" title="Ver convidados" data-email="${u.email}" style="margin-left: 6px;">👥</button>` : ''}
+                </td>
                 <td class="col-trips"><button class="icon-btn view-btn" title="Ver viagens" data-email="${u.email}">👁</button></td>
                 <td class="col-actions">
                     <div class="action-buttons">
@@ -104,13 +140,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 </td>
             </tr>
-        ` : '').join('');
+        ` : ''}).join('');
 
         list.innerHTML = `
             <div style="overflow:auto">
             <table style="width:100%;border-collapse:separate; border-spacing:0 12px;">
                 <thead>
-                    <tr style="text-align:left;background:#f4f4f4"><th>Nome</th><th>E-mail</th><th>CPF</th><th>Telefone</th><th>Role</th><th>Viagens</th><th></th></tr>
+                    <tr style="text-align:left;background:#f4f4f4"><th>Nome</th><th>E-mail</th><th>CPF</th><th>Telefone</th><th>Role</th><th style="text-align:center;">Convidados</th><th>Viagens</th><th></th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
@@ -211,6 +247,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!email) return;
             window.location.href = `minhas-compras.html?user=${encodeURIComponent(email)}`;
         }));
+        // referral button: show modal with list of referrals
+        list.querySelectorAll('.referral-btn').forEach(btn => btn.addEventListener('click', (ev) => {
+            const email = ev.currentTarget.dataset.email;
+            if (!email) return;
+            showReferralModal(email);
+        }));
         // dates button removed; admin manages trips in `admin-viajens.html`
         // add user button toggles the form
         const addBtn = document.getElementById('add-user-btn');
@@ -253,6 +295,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     attachHandlers();
 
     // per-user dates removed; admin will manage trips in `admin-viajens.html`
+    
+    // Modal functions
+    window.showReferralModal = function(email) {
+        const refData = referralCounts[email];
+        const user = users.find(u => u.email === email);
+        
+        if (!refData || !user) return;
+        
+        const modal = document.getElementById('referral-modal');
+        const title = document.getElementById('referral-modal-title');
+        const content = document.getElementById('referral-modal-content');
+        
+        title.textContent = `Convidados de ${user.name}`;
+        
+        if (refData.count === 0) {
+            content.innerHTML = '<p style="color: #999; text-align: center;">Nenhum convidado ainda.</p>';
+        } else {
+            content.innerHTML = refData.referrals.map((ref, index) => `
+                <div style="padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 25px; height: 25px; background: #0a7; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">
+                        ${index + 1}
+                    </div>
+                    <div style="flex: 1;">
+                        <p style="margin: 0; font-weight: 600; color: #333; font-size: 14px;">${ref.name}</p>
+                        <p style="margin: 3px 0 0 0; font-size: 12px; color: #999;">${ref.email}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        modal.style.display = 'flex';
+    };
+    
+    window.closeReferralModal = function() {
+        const modal = document.getElementById('referral-modal');
+        modal.style.display = 'none';
+    };
+    
+    // Fechar modal clicando fora
+    document.getElementById('referral-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeReferralModal();
+        }
+    });
 });
 </script>
 </body>

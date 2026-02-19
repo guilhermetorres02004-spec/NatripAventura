@@ -49,6 +49,24 @@
                 <span style="font-size:0.9rem;color:#666;font-weight:400">Você receberá um e-mail de confirmação em breve.</span>
             </div>
             
+            <!-- Seção de Convite -->
+            <div id="referral-section" style="display:none; margin-top:30px; padding:25px; background:#f0f8ff; border-radius:12px; border-left:4px solid #0a7;">
+                <h3 style="margin:0 0 10px 0; color:#333; font-size:1.2rem;">🎁 Convide um amigo para ir com voce!</h3>
+                <p style="margin:0 0 15px 0; color:#666; font-size:0.95rem;">Compartilhe seu link para fazer uma viajem inesquecivel com um amigo.</p>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button 
+                        id="copy-referral-btn" 
+                        onclick="copyReferralLink()"
+                        style="padding:12px 24px; background:#0a7; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:1rem; transition:background 0.3s;"
+                        onmouseover="this.style.background='#08a'"
+                        onmouseout="this.style.background='#0a7'"
+                    >
+                        📋 Copiar Link de Convite
+                    </button>
+                    <span id="copy-msg" style="font-size:0.9rem; font-weight:500;"></span>
+                </div>
+            </div>
+            
             <a href="minhas-compras.html" style="display:inline-block;margin-top:18px;color:#C85F00;text-decoration:underline;">Voltar para Minhas Compras</a>
         </div>
     </section>
@@ -117,6 +135,7 @@
         setTimeout(function() {
             btn.style.display = 'none';
             document.getElementById('pagamento-status').style.display = 'block';
+            showReferralSection();
         }, 2000);
     });
 
@@ -154,7 +173,8 @@
                         <small>Você será redirecionado em instantes...</small>
                     `;
                     statusDiv.style.display = 'block';
-                    setTimeout(() => { localStorage.removeItem('natrip_checkout_item'); window.location.href = 'minhas-compras.html'; }, 4000);
+                    showReferralSection();
+                    setTimeout(() => { localStorage.removeItem('natrip_checkout_item'); window.location.href = 'minhas-compras.html'; }, 6000);
                 } else {
                     console.error('Capture response', details);
                     alert('Ocorreu um erro ao confirmar o pagamento.');
@@ -171,6 +191,50 @@
     
     // Inicia
     initPayment();
+    
+    // Funções de convite
+    let userReferralLink = '';
+    
+    async function showReferralSection() {
+        const auth = window.natripAuth;
+        const user = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        
+        if (!user || !user.email) return;
+        
+        try {
+            const response = await fetch(`http://localhost:3000/api/referral-code?email=${encodeURIComponent(user.email)}`);
+            const data = await response.json();
+            
+            if (response.ok && data.referralCode) {
+                const baseUrl = window.location.origin;
+                userReferralLink = `${baseUrl}/perfil.html?ref=${data.referralCode}`;
+                document.getElementById('referral-section').style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Erro ao carregar código de convite:', error);
+        }
+    }
+    
+    function copyReferralLink() {
+        const copyMsg = document.getElementById('copy-msg');
+        
+        if (!userReferralLink) {
+            copyMsg.textContent = '✗ Erro ao copiar link';
+            copyMsg.style.color = '#c33';
+            return;
+        }
+        
+        navigator.clipboard.writeText(userReferralLink).then(() => {
+            copyMsg.textContent = '✓ Link copiado!';
+            copyMsg.style.color = '#0a7';
+            setTimeout(() => {
+                copyMsg.textContent = '';
+            }, 3000);
+        }).catch(err => {
+            copyMsg.textContent = '✗ Erro ao copiar';
+            copyMsg.style.color = '#c33';
+        });
+    }
     </script>
 </body>
 </html>

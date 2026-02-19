@@ -190,6 +190,33 @@ document.addEventListener("DOMContentLoaded", () => {
             const phone = document.getElementById('signup-phone').value.trim();
             const email = document.getElementById('signup-email').value.trim().toLowerCase();
             const password = document.getElementById('signup-password').value;
+            
+            // coleta campo "Como conheceu"
+            const sourceSelect = document.getElementById('signup-source');
+            const sourceOther = document.getElementById('signup-source-other');
+            const referralLinkField = document.getElementById('signup-referral-link');
+            let source = sourceSelect ? sourceSelect.value : '';
+            let referralCode = '';
+            
+            // Se selecionou "Outros", usa o valor do campo de texto
+            if (source === 'Outros' && sourceOther) {
+                source = sourceOther.value.trim();
+            }
+            
+            // Se selecionou "Amigo", extrai o código de convite
+            if (source === 'Amigo' && referralLinkField) {
+                const referralInput = referralLinkField.value.trim();
+                if (referralInput) {
+                    // Tenta extrair o código do link (formato: ?ref=XXXXXXXX) ou usa direto se for só o código
+                    const match = referralInput.match(/[?&]ref=([A-Z0-9]+)/i);
+                    if (match && match[1]) {
+                        referralCode = match[1].toUpperCase();
+                    } else {
+                        // Se não encontrou padrão de link, assume que é o código direto
+                        referralCode = referralInput.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    }
+                }
+            }
 
             // validações básicas no cliente (apenas formato)
             const cpfDigits = cpf.replace(/\D/g, ''); // remove não-dígitos
@@ -212,7 +239,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             // cria novo usuário via backend (sem salvar no localStorage)
-            const newUser = { name, cpf: cpfDigits, phone: phoneDigits, email, password };
+            const newUser = { name, cpf: cpfDigits, phone: phoneDigits, email, password, source };
+            if (referralCode) {
+                newUser.referredBy = referralCode;
+            }
             try {
                 const resp = await fetch('/api/signup', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
