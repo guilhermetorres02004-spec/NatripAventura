@@ -57,18 +57,29 @@ async function testDbConnection(retries = 3) {
     try {
       const connection = await pool.getConnection();
       console.log('✓ MySQL connected successfully');
+      console.log('  Host:', dbConfig.host);
+      console.log('  Database:', dbConfig.database);
       dbConnected = true;
       connection.release();
       return true;
     } catch (err) {
       console.error(`✗ MySQL connection error (attempt ${i + 1}/${retries}):`, err.message);
+      console.error('  Error code:', err.code);
+      console.error('  Host:', dbConfig.host);
+      console.error('  User:', dbConfig.user);
+      console.error('  Database:', dbConfig.database);
       if (i < retries - 1) {
         console.log('Retrying in 2 seconds...');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
   }
-  console.error('Failed to connect to MySQL after', retries, 'attempts');
+  console.error('❌ CRITICAL: Failed to connect to MySQL after', retries, 'attempts');
+  console.error('   Please verify:');
+  console.error('   1. MySQL server is running and accessible');
+  console.error('   2. Environment variables are set correctly (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)');
+  console.error('   3. MySQL allows external connections from this IP');
+  console.error('   4. Network/firewall is not blocking the connection');
   return false;
 }
 
@@ -360,6 +371,20 @@ app.post('/api/login', async (req, res) => {
   }
   
   try {
+    // Test database connection first
+    let connection;
+    try {
+      connection = await pool.getConnection();
+      connection.release();
+    } catch (dbErr) {
+      console.error('Database connection failed:', dbErr.message);
+      console.error('Error code:', dbErr.code);
+      return res.status(503).json({ 
+        error: 'Banco de dados indisponível. Verifique a configuração do MySQL.',
+        details: process.env.NODE_ENV === 'production' ? 'Database unavailable' : dbErr.message
+      });
+    }
+    
     const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
     console.log('Users found:', rows.length);
     
@@ -381,7 +406,12 @@ app.post('/api/login', async (req, res) => {
     res.json(sanitizeUser(user));
   } catch (err) {
     console.error('Error logging in:', err.message);
-    res.status(500).json({ error: 'Erro no login', details: err.message });
+    console.error('Error code:', err.code);
+    console.error('Full error:', err);
+    res.status(500).json({ 
+      error: 'Erro no login', 
+      details: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message 
+    });
   }
 });
 
