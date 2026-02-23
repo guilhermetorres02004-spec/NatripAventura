@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin — Produtos | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- header injected by js/main.js -->
+
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Gerenciar Produtos</h2>
+        <div id="admin-msg" style="margin-bottom:12px;color:#c33;"></div>
+
+        <div class="admin-fields" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;margin-bottom:16px;">
+            <div class="form-field" style="width:100%;">
+                <label for="product-name">Nome do Produto</label>
+                <input id="product-name" type="text" placeholder="Ex: Camiseta Natrip" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;" />
+            </div>
+
+            <div class="form-field" style="width:100%;">
+                <label for="product-price">Preço (R$)</label>
+                <input id="product-price" type="number" min="0" step="0.01" placeholder="0.00" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:180px;" />
+            </div>
+
+            <div class="form-field" style="width:100%;">
+                <label for="product-image">Imagem</label>
+                <input id="product-image" type="file" accept="image/*" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;" />
+                <img id="product-image-preview" src="" alt="Preview" style="margin-top:10px;width:160px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #ddd;display:none;" />
+            </div>
+
+            <div style="width:100%;display:flex;justify-content:flex-end;">
+                <button id="product-add" class="save-btn">Adicionar Produto</button>
+            </div>
+        </div>
+
+        <div id="products-list"></div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const auth = window.natripAuth;
+    const current = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser')||'null');
+    const msg = document.getElementById('admin-msg');
+    const PRODUCTS_KEY = 'natrip_products';
+    let selectedImageData = '';
+
+    if (!current) { msg.textContent='Acesso restrito: faça login como administrador.'; return; }
+
+    function getUsers(){
+        try { return JSON.parse(localStorage.getItem('natrip_users') || '[]'); } catch(e){ return []; }
+    }
+
+    async function checkAdmin() {
+        try {
+            const resp = await fetch('/api/users');
+            if (!resp.ok) {
+                const usersLocal = getUsers();
+                const fullLocal = usersLocal.find(u => u.email === current.email);
+                if (!fullLocal || fullLocal.role !== 'admin') { msg.textContent='Acesso negado. Somente administradores.'; return false; }
+                return true;
+            }
+            const users = await resp.json();
+            const full = users.find(u => u.email === current.email);
+            if (!full || full.role !== 'admin') { msg.textContent='Acesso negado. Somente administradores.'; return false; }
+            return true;
+        } catch (e) {
+            const usersLocal = getUsers();
+            const fullLocal = usersLocal.find(u => u.email === current.email);
+            if (!fullLocal || fullLocal.role !== 'admin') { msg.textContent='Acesso negado. Somente administradores.'; return false; }
+            return true;
+        }
+    }
+
+    function getProducts(){
+        try {
+            const arr = JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]');
+            return Array.isArray(arr) ? arr : [];
+        } catch(e){
+            return [];
+        }
+    }
+
+    function saveProducts(items){
+        localStorage.setItem(PRODUCTS_KEY, JSON.stringify(items));
+        localStorage.setItem('natrip_admin_products_updated_at', new Date().toISOString());
+    }
+
+    function formatBRL(v){
+        return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function renderProducts(){
+        const list = document.getElementById('products-list');
+        if (!list) return;
+        const items = getProducts();
+        if (!items.length) {
+            list.innerHTML = '<p style="color:#666;">Nenhum produto cadastrado.</p>';
+            return;
+        }
+
+        list.innerHTML = items.map(item => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#fff;border-radius:8px;margin-bottom:12px;box-shadow:0 6px 18px rgba(0,0,0,0.06);">
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <img src="${item.img}" alt="${item.name}" style="width:90px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />
+                    <div>
+                        <strong style="color:#C85F00;">${item.name}</strong>
+                        <div style="color:#666;">${formatBRL(item.price)}</div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function resetForm(){
+        const nameEl = document.getElementById('product-name');
+        const priceEl = document.getElementById('product-price');
+        const imageEl = document.getElementById('product-image');
+        const preview = document.getElementById('product-image-preview');
+        if (nameEl) nameEl.value = '';
+        if (priceEl) priceEl.value = '';
+        if (imageEl) imageEl.value = '';
+        if (preview) { preview.src = ''; preview.style.display = 'none'; }
+        selectedImageData = '';
+    }
+
+    function initImagePreview(){
+        const imageEl = document.getElementById('product-image');
+        const preview = document.getElementById('product-image-preview');
+        if (!imageEl || !preview) return;
+
+        imageEl.addEventListener('change', (e)=>{
+            const file = e.target.files && e.target.files[0];
+            if (!file) {
+                selectedImageData = '';
+                preview.src = '';
+                preview.style.display = 'none';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = ()=>{
+                selectedImageData = String(reader.result || '');
+                if (selectedImageData) {
+                    preview.src = selectedImageData;
+                    preview.style.display = 'inline-block';
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function init(){
+        const ok = await checkAdmin();
+        if (!ok) return;
+
+        initImagePreview();
+        renderProducts();
+
+        const addBtn = document.getElementById('product-add');
+        if (!addBtn) return;
+
+        addBtn.addEventListener('click', ()=>{
+            const name = (document.getElementById('product-name')?.value || '').trim();
+            const priceRaw = document.getElementById('product-price')?.value || '';
+            const price = parseFloat(priceRaw);
+
+            if (!name) return alert('Preencha o nome do produto.');
+            if (isNaN(price) || price < 0) return alert('Informe um preço válido.');
+            if (!selectedImageData) return alert('Selecione uma imagem do produto.');
+
+            const products = getProducts();
+            const newItem = {
+                id: `p_${Date.now()}`,
+                name,
+                price: parseFloat(price.toFixed(2)),
+                img: selectedImageData,
+                createdBy: current.email,
+                createdAt: new Date().toISOString()
+            };
+
+            products.push(newItem);
+            saveProducts(products);
+            resetForm();
+            renderProducts();
+            msg.style.color = '#0a7';
+            msg.textContent = 'Produto cadastrado com sucesso!';
+        });
+    }
+
+    init();
+});
+</script>
+</body>
+</html>

@@ -556,6 +556,83 @@ html { scroll-behavior: smooth; }
 .pc-seats { color:#666; font-size:0.95rem; }
 .pc-btn { background: linear-gradient(135deg,#E76F00,#C85F00); color:#fff; padding:8px 12px; border-radius:8px; text-decoration:none; font-weight:600; }
 
+/* ===== SHOP ===== */
+.shop-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.shop-card {
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+}
+
+.shop-card-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    display: block;
+}
+
+.shop-card-content {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.shop-card-price {
+    color: #666;
+    font-weight: 600;
+}
+
+.shop-card-name {
+    color: #C85F00;
+    font-size: 1.05rem;
+    line-height: 1.25;
+    min-height: 2.6em;
+}
+
+.shop-card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.shop-btn {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.shop-btn-primary {
+    background: linear-gradient(135deg,#E76F00,#C85F00);
+    color: #fff;
+}
+
+.shop-btn-secondary {
+    background: #fff;
+    color: #C85F00;
+    border: 1px solid #C85F00;
+}
+
+@media (max-width: 980px) {
+    .shop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+    .shop-grid { grid-template-columns: 1fr; }
+}
+
 .carousel-availability {
     position: absolute;
     left: 16px;

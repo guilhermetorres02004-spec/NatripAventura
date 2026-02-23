@@ -38,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             <nav class="menu">
                 <a href="/index.html">Início</a>
-                <a href="#" class="disabled" aria-disabled="true">Shop</a>
+                <a href="/shop.html">Shop</a>
                 <a href="/sobre.html">Sobre</a>
                 <a href="/contato.html">Contato</a>
                 <div class="perfil-menu">
@@ -325,7 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
             perfilBtn.textContent = `Olá, ${name}`;
                     dropdown.innerHTML = `
                 <div class="perfil-info">${name}</div>
-                ${isAdmin ? '<a href="/admin-usuarios.html">Usuários</a><a href="/admin-viajens.html">Viagens</a>' : ''}
+                ${isAdmin ? '<a href="/admin-usuarios.html">Usuários</a><a href="/admin-viajens.html">Viagens</a><a href="/admin-produtos.html">Produtos</a>' : ''}
                 <a href="/perfil-dados.html">Dados da Conta</a>
                 <a href="/minhas-compras.html">Minhas Compras</a>
                 <a href="/carrinho.html">Carrinho</a>

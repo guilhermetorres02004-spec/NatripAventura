@@ -11,11 +11,11 @@
 
 <!-- header injetado por js/main.js -->
 
-<section class="destinos-layout" style="max-width:1100px;margin:28px auto;padding:18px;">
+<section class="destinos-layout shop-layout" style="max-width:1100px;margin:28px auto;padding:18px;">
     <h1 style="color:#C85F00;margin-bottom:12px;">Loja</h1>
-    <p style="color:#666;margin-bottom:18px;">Confira produtos e souvenirs das nossas viagens. Clique em "Comprar" para iniciar o processo.</p>
+    <p style="color:#666;margin-bottom:18px;">Confira produtos e souvenirs das nossas viagens.</p>
 
-    <div id="shop-products" class="proximas-list"></div>
+    <div id="shop-products" class="shop-grid"></div>
 </section>
 
 <footer>
@@ -28,36 +28,127 @@ document.addEventListener('DOMContentLoaded', async () => {
     const container = document.getElementById('shop-products');
     if (!container) return;
 
-    async function loadProducts(){
-        try {
-            const r = await fetch('/api/products');
-            if (r.ok) return await r.json();
-        } catch(e){}
-        try { return JSON.parse(localStorage.getItem('natrip_products')||'[]'); } catch(e){ return []; }
-    }
+    const CART_KEY = 'natrip_shop_cart';
+    const PRODUCTS_KEY = 'natrip_products';
+    const PRODUCTS_UPDATED_KEY = 'natrip_admin_products_updated_at';
+    let normalizedProducts = [];
 
-    const products = (await loadProducts()) || [
+    const fallbackProducts = [
         { id: 'p1', name: 'Camiseta Natrip', price: 59.9, img: 'https://images.unsplash.com/photo-1520975917278-1a7a7f8c7f3a' },
         { id: 'p2', name: 'Caneca Natrip', price: 29.9, img: 'https://images.unsplash.com/photo-1526403224736-7e9d1b6b1b3f' },
         { id: 'p3', name: 'Adesivo', price: 4.9, img: 'https://images.unsplash.com/photo-1525909002-7b9b6b5f8f3b' }
     ];
 
-    function fmtBRL(v){ return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+    async function loadProducts(){
+        let serverProducts = [];
+        try {
+            const r = await fetch('/api/products');
+            if (r.ok) {
+                const apiData = await r.json();
+                if (Array.isArray(apiData)) serverProducts = apiData;
+            }
+        } catch(e){}
 
-    container.innerHTML = products.map(p => `
-        <div class="prox-card">
-            <div style="display:flex;gap:12px;align-items:center;">
-                <img src="${p.img}" alt="${p.name}" style="width:84px;height:64px;object-fit:cover;border-radius:8px;" />
-                <div>
-                    <strong style="color:#C85F00">${p.name}</strong>
-                    <div style="color:#666">${fmtBRL(p.price)}</div>
+        let localProducts = [];
+        try {
+            const localData = JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]');
+            if (Array.isArray(localData)) localProducts = localData;
+        } catch(e){}
+
+        const merged = [...serverProducts, ...localProducts];
+        if (merged.length) return merged;
+        return fallbackProducts;
+    }
+
+    function fmtBRL(v){ return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+    function normalizeProduct(p){
+        const id = p.id || p.productId || `p_${Date.now()}_${Math.random()}`;
+        const name = p.name || p.title || 'Produto';
+        const price = Number(p.price || p.unitPrice || 0);
+        const img = p.img || p.image || 'https://images.unsplash.com/photo-1503602642458-232111445657';
+        return { id: String(id), name, price, img };
+    }
+
+    function dedupeProducts(items){
+        const map = new Map();
+        (items || []).forEach(raw => {
+            const p = normalizeProduct(raw);
+            map.set(p.id, p);
+        });
+        return Array.from(map.values());
+    }
+
+    function addToCart(item){
+        let cart = [];
+        try { cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e) { cart = []; }
+        const existing = cart.find(i => String(i.id) === String(item.id));
+        if (existing) {
+            existing.qty = (existing.qty || 1) + 1;
+        } else {
+            cart.push({ ...item, qty: 1, addedAt: new Date().toISOString() });
+        }
+        localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
+
+    function buyNow(item){
+        const checkoutItem = {
+            city: 'Loja',
+            name: item.name,
+            productId: item.id,
+            qty: 1,
+            unitPrice: item.price,
+            totalValue: parseFloat(item.price)
+        };
+        localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
+        window.location.href = 'pagamento.html';
+    }
+
+    async function renderProducts(){
+        const raw = await loadProducts();
+        normalizedProducts = dedupeProducts(raw);
+        container.innerHTML = normalizedProducts.map(p => `
+            <div class="shop-card">
+                <img class="shop-card-image" src="${p.img}" alt="${p.name}" />
+                <div class="shop-card-content">
+                    <div class="shop-card-price">${fmtBRL(p.price)}</div>
+                    <h3 class="shop-card-name">${p.name}</h3>
+                    <div class="shop-card-actions">
+                        <button class="shop-btn shop-btn-secondary" data-action="add" data-id="${p.id}">Adicionar ao carrinho</button>
+                        <button class="shop-btn shop-btn-primary" data-action="buy" data-id="${p.id}">Comprar</button>
+                    </div>
                 </div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
-                <a class="pc-btn" href="pagamento.html?product=${encodeURIComponent(p.id)}">Comprar</a>
-            </div>
-        </div>
-    `).join('');
+        `).join('');
+    }
+
+    await renderProducts();
+
+    container.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button[data-action]');
+        if (!btn) return;
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+        const product = normalizedProducts.find(p => String(p.id) === String(id));
+        if (!product) return;
+
+        if (action === 'add') {
+            addToCart(product);
+            btn.textContent = 'Adicionado';
+            setTimeout(() => { btn.textContent = 'Adicionar ao carrinho'; }, 1200);
+            return;
+        }
+
+        if (action === 'buy') {
+            buyNow(product);
+        }
+    });
+
+    window.addEventListener('storage', (ev) => {
+        if (ev.key === PRODUCTS_KEY || ev.key === PRODUCTS_UPDATED_KEY) {
+            renderProducts();
+        }
+    });
 });
 </script>
 </body>
