@@ -52,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const auth = window.natripAuth;
     const current = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser')||'null');
     const msg = document.getElementById('admin-msg');
-    const PRODUCTS_KEY = 'natrip_products';
     let selectedImageData = '';
 
     if (!current) { msg.textContent='Acesso restrito: faça login como administrador.'; return; }
@@ -82,28 +81,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function getProducts(){
+    async function getProducts(){
         try {
-            const arr = JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]');
-            return Array.isArray(arr) ? arr : [];
+            const resp = await fetch('/api/products');
+            if (!resp.ok) return [];
+            const items = await resp.json();
+            return Array.isArray(items) ? items : [];
         } catch(e){
             return [];
         }
     }
 
-    function saveProducts(items){
-        localStorage.setItem(PRODUCTS_KEY, JSON.stringify(items));
-        localStorage.setItem('natrip_admin_products_updated_at', new Date().toISOString());
+    async function saveProducts(items){
+        const resp = await fetch('/api/products/upsert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ products: items })
+        });
+        if (!resp.ok) throw new Error('Falha ao salvar produtos');
     }
 
     function formatBRL(v){
         return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
 
-    function renderProducts(){
+    async function renderProducts(){
         const list = document.getElementById('products-list');
         if (!list) return;
-        const items = getProducts();
+        const items = await getProducts();
         if (!items.length) {
             list.innerHTML = '<p style="color:#666;">Nenhum produto cadastrado.</p>';
             return;
@@ -164,12 +169,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ok) return;
 
         initImagePreview();
-        renderProducts();
+        await renderProducts();
 
         const addBtn = document.getElementById('product-add');
         if (!addBtn) return;
 
-        addBtn.addEventListener('click', ()=>{
+        addBtn.addEventListener('click', async ()=>{
             const name = (document.getElementById('product-name')?.value || '').trim();
             const priceRaw = document.getElementById('product-price')?.value || '';
             const price = parseFloat(priceRaw);
@@ -178,22 +183,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isNaN(price) || price < 0) return alert('Informe um preço válido.');
             if (!selectedImageData) return alert('Selecione uma imagem do produto.');
 
-            const products = getProducts();
             const newItem = {
-                id: `p_${Date.now()}`,
                 name,
                 price: parseFloat(price.toFixed(2)),
-                img: selectedImageData,
+                image: selectedImageData,
                 createdBy: current.email,
                 createdAt: new Date().toISOString()
             };
 
-            products.push(newItem);
-            saveProducts(products);
-            resetForm();
-            renderProducts();
-            msg.style.color = '#0a7';
-            msg.textContent = 'Produto cadastrado com sucesso!';
+            try {
+                await saveProducts([newItem]);
+                resetForm();
+                await renderProducts();
+                msg.style.color = '#0a7';
+                msg.textContent = 'Produto cadastrado com sucesso!';
+            } catch (e) {
+                msg.style.color = '#c33';
+                msg.textContent = 'Erro ao salvar produto no servidor.';
+            }
         });
     }
 

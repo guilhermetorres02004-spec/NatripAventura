@@ -29,8 +29,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!container) return;
 
     const CART_KEY = 'natrip_shop_cart';
-    const PRODUCTS_KEY = 'natrip_products';
-    const PRODUCTS_UPDATED_KEY = 'natrip_admin_products_updated_at';
     let normalizedProducts = [];
 
     const fallbackProducts = [
@@ -40,23 +38,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     ];
 
     async function loadProducts(){
-        let serverProducts = [];
         try {
             const r = await fetch('/api/products');
             if (r.ok) {
                 const apiData = await r.json();
-                if (Array.isArray(apiData)) serverProducts = apiData;
+                if (Array.isArray(apiData) && apiData.length) return apiData;
             }
         } catch(e){}
-
-        let localProducts = [];
-        try {
-            const localData = JSON.parse(localStorage.getItem(PRODUCTS_KEY) || '[]');
-            if (Array.isArray(localData)) localProducts = localData;
-        } catch(e){}
-
-        const merged = [...serverProducts, ...localProducts];
-        if (merged.length) return merged;
         return fallbackProducts;
     }
 
@@ -141,12 +129,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (action === 'buy') {
             buyNow(product);
-        }
-    });
-
-    window.addEventListener('storage', (ev) => {
-        if (ev.key === PRODUCTS_KEY || ev.key === PRODUCTS_UPDATED_KEY) {
-            renderProducts();
         }
     });
 });

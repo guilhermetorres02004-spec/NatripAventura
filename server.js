@@ -204,6 +204,18 @@ if (USE_POSTGRES) {
       `);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_banners_order ON banners(orderIndex)`);
 
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS products (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255),
+          price DECIMAL(10,2),
+          image TEXT,
+          createdBy VARCHAR(255),
+          createdAt VARCHAR(50)
+        )
+      `);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
+
     } else {
       // SQLite schema
       await db.run(`
@@ -248,6 +260,17 @@ if (USE_POSTGRES) {
           image TEXT,
           link TEXT,
           orderIndex INTEGER,
+          createdBy TEXT,
+          createdAt TEXT
+        )
+      `);
+
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS products (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT,
+          price REAL,
+          image TEXT,
           createdBy TEXT,
           createdAt TEXT
         )
@@ -525,6 +548,82 @@ app.post('/api/banners/delete', async (req, res) => {
   } catch (err) {
     console.error('Error deleting banner:', err);
     res.status(500).json({ error: 'Erro ao deletar banner' });
+  }
+});
+
+// Products
+function sanitizeProduct(p) {
+  if (!p) return p;
+  return {
+    id: p.id,
+    name: p.name || '',
+    price: Number(p.price || 0),
+    img: p.image || '',
+    image: p.image || '',
+    createdBy: p.createdby || p.createdBy || '',
+    createdAt: p.createdat || p.createdAt || ''
+  };
+}
+
+app.get('/api/products', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM products ORDER BY COALESCE(createdAt,\'\') DESC, id DESC');
+    res.json((rows || []).map(sanitizeProduct));
+  } catch (err) {
+    console.error('Error fetching products:', err);
+    res.status(500).json({ error: 'Erro ao ler produtos' });
+  }
+});
+
+app.post('/api/products/upsert', async (req, res) => {
+  const products = Array.isArray(req.body.products) ? req.body.products : [];
+  if (products.length === 0) return res.json({ ok: true });
+
+  try {
+    for (const p of products) {
+      const values = [
+        p.name || '',
+        Number(p.price || 0),
+        p.image || p.img || '',
+        p.createdBy || '',
+        p.createdAt || new Date().toISOString()
+      ];
+
+      if (p.id) {
+        await db.run(
+          SQL(
+            'UPDATE products SET name=$1, price=$2, image=$3, createdBy=$4, createdAt=$5 WHERE id=$6',
+            'UPDATE products SET name=?, price=?, image=?, createdBy=?, createdAt=? WHERE id=?'
+          ),
+          [...values, p.id]
+        );
+      } else {
+        await db.run(
+          SQL(
+            'INSERT INTO products (name,price,image,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5)',
+            'INSERT INTO products (name,price,image,createdBy,createdAt) VALUES (?,?,?,?,?)'
+          ),
+          values
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error upserting products:', err);
+    res.status(500).json({ error: 'Erro ao salvar produtos' });
+  }
+});
+
+app.post('/api/products/delete', async (req, res) => {
+  const id = req.body && req.body.id;
+  if (!id) return res.status(400).json({ error: 'id obrigatório' });
+
+  try {
+    await db.run(SQL('DELETE FROM products WHERE id = $1', 'DELETE FROM products WHERE id = ?'), [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ error: 'Erro ao deletar produto' });
   }
 });
 
