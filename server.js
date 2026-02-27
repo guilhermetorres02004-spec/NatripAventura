@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const fetch = global.fetch || require('node-fetch');
 const bcrypt = require('bcryptjs');
+const { randomUUID } = require('crypto');
 
 const app = express();
 
@@ -208,6 +209,8 @@ if (USE_POSTGRES) {
         CREATE TABLE IF NOT EXISTS products (
           id SERIAL PRIMARY KEY,
           name VARCHAR(255),
+          category VARCHAR(100),
+          stock INTEGER DEFAULT 0,
           price DECIMAL(10,2),
           image TEXT,
           createdBy VARCHAR(255),
@@ -215,6 +218,37 @@ if (USE_POSTGRES) {
         )
       `);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100)');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS stock INTEGER DEFAULT 0');
+      } catch (e) {}
+
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS payment_orders (
+          id SERIAL PRIMARY KEY,
+          orderToken VARCHAR(80) UNIQUE,
+          provider VARCHAR(60),
+          providerPaymentId VARCHAR(120),
+          status VARCHAR(40),
+          amountSubtotal DECIMAL(10,2),
+          shippingAmount DECIMAL(10,2),
+          amountTotal DECIMAL(10,2),
+          checkoutData TEXT,
+          deliveryData TEXT,
+          paymentData TEXT,
+          stockDecremented BOOLEAN DEFAULT FALSE,
+          createdAt VARCHAR(50),
+          updatedAt VARCHAR(50)
+        )
+      `);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_payment_orders_token ON payment_orders(orderToken)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_payment_orders_status ON payment_orders(status)`);
+      try {
+        await db.run('ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS paymentData TEXT');
+      } catch (e) {}
 
     } else {
       // SQLite schema
@@ -269,12 +303,42 @@ if (USE_POSTGRES) {
         CREATE TABLE IF NOT EXISTS products (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT,
+          category TEXT,
+          stock INTEGER DEFAULT 0,
           price REAL,
           image TEXT,
           createdBy TEXT,
           createdAt TEXT
         )
       `);
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN category TEXT');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN stock INTEGER DEFAULT 0');
+      } catch (e) {}
+
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS payment_orders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          orderToken TEXT UNIQUE,
+          provider TEXT,
+          providerPaymentId TEXT,
+          status TEXT,
+          amountSubtotal REAL,
+          shippingAmount REAL,
+          amountTotal REAL,
+          checkoutData TEXT,
+          deliveryData TEXT,
+          paymentData TEXT,
+          stockDecremented INTEGER DEFAULT 0,
+          createdAt TEXT,
+          updatedAt TEXT
+        )
+      `);
+      try {
+        await db.run('ALTER TABLE payment_orders ADD COLUMN paymentData TEXT');
+      } catch (e) {}
     }
 
     // Create admin user
@@ -552,11 +616,193 @@ app.post('/api/banners/delete', async (req, res) => {
 });
 
 // Products
+const ALLOWED_PRODUCT_CATEGORIES = new Set([
+  'camisas (masculino)',
+  'camisas (feminina)',
+  'calcas (masculino)',
+  'calcas (feminina)',
+  'outros...'
+]);
+
+function normalizeProductCategory(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text === 'camisas (masculino)') return 'camisas (masculino)';
+  if (text === 'camisas (feminina)') return 'camisas (feminina)';
+  if (text === 'calcas (masculino)') return 'calcas (masculino)';
+  if (text === 'calcas (feminina)') return 'calcas (feminina)';
+  if (text === 'outros...') return 'outros...';
+  return '';
+}
+
+function normalizeProductStock(value) {
+  const stock = Number(value);
+  if (!Number.isFinite(stock)) return 0;
+  const stockInt = Math.trunc(stock);
+  if (stockInt < 0) return 0;
+  return stockInt;
+}
+
+function parseMoney(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Number(num.toFixed(2));
+}
+
+function normalizePaymentStatus(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text === 'paid' || text === 'approved' || text === 'completed') return 'paid';
+  if (text === 'failed' || text === 'cancelled' || text === 'canceled') return 'failed';
+  return 'pending';
+}
+
+function normalizeMercadoPagoStatus(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text === 'approved') return 'paid';
+  if (text === 'rejected' || text === 'cancelled' || text === 'cancelled_by_user' || text === 'charged_back') return 'failed';
+  return 'pending';
+}
+
+function isTruthyStockDecremented(value) {
+  return value === true || value === 1 || String(value || '').toLowerCase() === 'true';
+}
+
+function parseJsonSafe(value, fallback = {}) {
+  try {
+    return JSON.parse(value || '{}') || fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function getMercadoPagoAccessToken() {
+  return String(process.env.MP_ACCESS_TOKEN || '').trim();
+}
+
+function getMercadoPagoWebhookToken() {
+  return String(process.env.MP_WEBHOOK_TOKEN || '').trim();
+}
+
+async function mercadoPagoRequest(pathname, options = {}) {
+  const token = getMercadoPagoAccessToken();
+  if (!token) throw new Error('Mercado Pago não configurado: defina MP_ACCESS_TOKEN');
+
+  const url = `https://api.mercadopago.com${pathname}`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  const response = await fetch(url, { ...options, headers });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = body?.message || body?.error || `Mercado Pago HTTP ${response.status}`;
+    throw new Error(msg);
+  }
+  return body;
+}
+
+async function fetchMercadoPagoPayment(paymentId) {
+  const id = String(paymentId || '').trim();
+  if (!id) throw new Error('paymentId do Mercado Pago é obrigatório');
+  return await mercadoPagoRequest(`/v1/payments/${encodeURIComponent(id)}`, { method: 'GET' });
+}
+
+function extractPixDataFromMercadoPago(paymentData) {
+  const tx = paymentData?.point_of_interaction?.transaction_data || {};
+  return {
+    qrCode: tx.qr_code || '',
+    qrCodeBase64: tx.qr_code_base64 || '',
+    ticketUrl: tx.ticket_url || ''
+  };
+}
+
+function getCheckoutStockItems(checkoutItem) {
+  if (!checkoutItem) return [];
+  if (checkoutItem.source === 'cart' && Array.isArray(checkoutItem.items)) {
+    return checkoutItem.items
+      .map(item => ({ id: Number(item?.id), qty: normalizeProductStock(item?.qty || 1) || 1 }))
+      .filter(item => Number.isInteger(item.id) && item.id > 0 && item.qty > 0);
+  }
+
+  const id = Number(checkoutItem.productId || checkoutItem.id);
+  if (Number.isInteger(id) && id > 0) {
+    return [{ id, qty: normalizeProductStock(checkoutItem.qty || 1) || 1 }];
+  }
+
+  return [];
+}
+
+async function decrementProductStockItems(items) {
+  for (const item of items) {
+    const id = Number(item?.id);
+    const qty = normalizeProductStock(item?.qty || 1);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('id de produto inválido');
+    }
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new Error('quantidade inválida');
+    }
+
+    const result = await db.run(
+      SQL(
+        'UPDATE products SET stock = COALESCE(stock,0) - $1 WHERE id = $2 AND COALESCE(stock,0) >= $1',
+        'UPDATE products SET stock = COALESCE(stock,0) - ? WHERE id = ? AND COALESCE(stock,0) >= ?'
+      ),
+      USE_POSTGRES ? [qty, id] : [qty, id, qty]
+    );
+
+    if (!result || !result.changes) {
+      throw new Error('Estoque insuficiente para finalizar a compra');
+    }
+  }
+}
+
+async function updatePaymentOrderStatus(order, nextStatus, providerPaymentId, paymentData = null) {
+  const nowIso = new Date().toISOString();
+  const orderToken = order.ordertoken || order.orderToken;
+  let stockDecremented = isTruthyStockDecremented(order.stockdecremented ?? order.stockDecremented);
+
+  if (nextStatus === 'paid' && !stockDecremented) {
+    const checkoutRaw = order.checkoutdata || order.checkoutData || '{}';
+    const checkoutData = parseJsonSafe(checkoutRaw, {});
+    const stockItems = getCheckoutStockItems(checkoutData);
+    if (stockItems.length) {
+      await decrementProductStockItems(stockItems);
+    }
+    stockDecremented = true;
+  }
+
+  const finalProviderPaymentId = String(providerPaymentId || order.providerpaymentid || order.providerPaymentId || '').trim();
+  const currentPaymentData = parseJsonSafe(order.paymentdata || order.paymentData || '{}', {});
+  const mergedPaymentData = paymentData ? { ...currentPaymentData, ...paymentData } : currentPaymentData;
+
+  await db.run(
+    SQL(
+      'UPDATE payment_orders SET status = $1, providerPaymentId = $2, paymentData = $3, stockDecremented = $4, updatedAt = $5 WHERE orderToken = $6',
+      'UPDATE payment_orders SET status = ?, providerPaymentId = ?, paymentData = ?, stockDecremented = ?, updatedAt = ? WHERE orderToken = ?'
+    ),
+    [
+      nextStatus,
+      finalProviderPaymentId,
+      JSON.stringify(mergedPaymentData),
+      USE_POSTGRES ? stockDecremented : (stockDecremented ? 1 : 0),
+      nowIso,
+      orderToken
+    ]
+  );
+
+  return { status: nextStatus, stockDecremented, paymentData: mergedPaymentData, providerPaymentId: finalProviderPaymentId };
+}
+
 function sanitizeProduct(p) {
   if (!p) return p;
+  const category = normalizeProductCategory(p.category);
   return {
     id: p.id,
     name: p.name || '',
+    category,
+    stock: normalizeProductStock(p.stock),
     price: Number(p.price || 0),
     img: p.image || '',
     image: p.image || '',
@@ -581,8 +827,15 @@ app.post('/api/products/upsert', async (req, res) => {
 
   try {
     for (const p of products) {
+      const category = normalizeProductCategory(p.category);
+      if (!ALLOWED_PRODUCT_CATEGORIES.has(category)) {
+        return res.status(400).json({ error: 'Categoria de produto inválida' });
+      }
+
       const values = [
         p.name || '',
+        category,
+        normalizeProductStock(p.stock),
         Number(p.price || 0),
         p.image || p.img || '',
         p.createdBy || '',
@@ -592,16 +845,16 @@ app.post('/api/products/upsert', async (req, res) => {
       if (p.id) {
         await db.run(
           SQL(
-            'UPDATE products SET name=$1, price=$2, image=$3, createdBy=$4, createdAt=$5 WHERE id=$6',
-            'UPDATE products SET name=?, price=?, image=?, createdBy=?, createdAt=? WHERE id=?'
+            'UPDATE products SET name=$1, category=$2, stock=$3, price=$4, image=$5, createdBy=$6, createdAt=$7 WHERE id=$8',
+            'UPDATE products SET name=?, category=?, stock=?, price=?, image=?, createdBy=?, createdAt=? WHERE id=?'
           ),
           [...values, p.id]
         );
       } else {
         await db.run(
           SQL(
-            'INSERT INTO products (name,price,image,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5)',
-            'INSERT INTO products (name,price,image,createdBy,createdAt) VALUES (?,?,?,?,?)'
+            'INSERT INTO products (name,category,stock,price,image,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            'INSERT INTO products (name,category,stock,price,image,createdBy,createdAt) VALUES (?,?,?,?,?,?,?)'
           ),
           values
         );
@@ -626,6 +879,338 @@ app.post('/api/products/delete', async (req, res) => {
     res.status(500).json({ error: 'Erro ao deletar produto' });
   }
 });
+
+app.post('/api/products/decrement-stock', async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!items.length) return res.json({ ok: true });
+
+  try {
+    await decrementProductStockItems(items);
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error decrementing product stock:', err);
+    if (String(err.message || '').includes('Estoque insuficiente')) {
+      return res.status(409).json({ error: err.message });
+    }
+    if (String(err.message || '').includes('inválido')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Erro ao baixar estoque dos produtos' });
+  }
+});
+
+app.post('/api/payments/create-order', async (req, res) => {
+  try {
+    const checkoutItem = req.body?.checkoutItem || null;
+    const deliveryData = req.body?.deliveryData || {};
+    const shippingValue = parseMoney(req.body?.shippingValue || 0);
+    const provider = String(req.body?.provider || 'mercadopago').trim().toLowerCase() || 'mercadopago';
+
+    if (!checkoutItem) return res.status(400).json({ error: 'checkoutItem obrigatório' });
+
+    const subtotal = parseMoney(checkoutItem.totalValue || 0);
+    const total = parseMoney(subtotal + shippingValue);
+    const orderToken = randomUUID();
+    const nowIso = new Date().toISOString();
+    let providerPaymentId = '';
+    let paymentData = {};
+    let status = 'pending';
+
+    if (provider === 'mercadopago') {
+      const payerEmail = String(
+        req.body?.payerEmail ||
+        deliveryData?.email ||
+        checkoutItem?.email ||
+        'comprador@natrip.local'
+      ).trim().toLowerCase();
+
+      const webhookToken = getMercadoPagoWebhookToken();
+      const notificationBase = process.env.PUBLIC_WEBHOOK_BASE_URL || process.env.PUBLIC_BASE_URL || '';
+      const notificationUrl = notificationBase
+        ? `${notificationBase.replace(/\/$/, '')}/api/payments/webhook/mercadopago${webhookToken ? `?token=${encodeURIComponent(webhookToken)}` : ''}`
+        : undefined;
+
+      const mpBody = {
+        transaction_amount: total,
+        description: `Natrip Pedido ${orderToken}`,
+        payment_method_id: 'pix',
+        external_reference: orderToken,
+        payer: { email: payerEmail },
+        metadata: { orderToken }
+      };
+      if (notificationUrl) mpBody.notification_url = notificationUrl;
+
+      const mpPayment = await mercadoPagoRequest('/v1/payments', {
+        method: 'POST',
+        headers: { 'X-Idempotency-Key': orderToken },
+        body: JSON.stringify(mpBody)
+      });
+
+      providerPaymentId = String(mpPayment?.id || '').trim();
+      status = normalizeMercadoPagoStatus(mpPayment?.status);
+      paymentData = {
+        ...extractPixDataFromMercadoPago(mpPayment),
+        mpStatus: String(mpPayment?.status || 'pending'),
+        raw: mpPayment
+      };
+    }
+
+    await db.run(
+      SQL(
+        'INSERT INTO payment_orders (orderToken,provider,providerPaymentId,status,amountSubtotal,shippingAmount,amountTotal,checkoutData,deliveryData,paymentData,stockDecremented,createdAt,updatedAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        'INSERT INTO payment_orders (orderToken,provider,providerPaymentId,status,amountSubtotal,shippingAmount,amountTotal,checkoutData,deliveryData,paymentData,stockDecremented,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+      ),
+      [
+        orderToken,
+        provider,
+        providerPaymentId,
+        status,
+        subtotal,
+        shippingValue,
+        total,
+        JSON.stringify(checkoutItem || {}),
+        JSON.stringify(deliveryData || {}),
+        JSON.stringify(paymentData || {}),
+        USE_POSTGRES ? false : 0,
+        nowIso,
+        nowIso
+      ]
+    );
+
+    res.json({
+      ok: true,
+      orderToken,
+      status,
+      pix: {
+        key: paymentData.qrCode || process.env.PIX_KEY || 'natripaventura@gmail.com',
+        qrCodeImage: paymentData.qrCodeBase64 ? `data:image/png;base64,${paymentData.qrCodeBase64}` : '/img/pix-qrcode.png',
+        ticketUrl: paymentData.ticketUrl || ''
+      },
+      amounts: { subtotal, shipping: shippingValue, total }
+    });
+  } catch (err) {
+    console.error('Error creating payment order:', err);
+    if (String(err.message || '').includes('Mercado Pago não configurado')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Erro ao criar pedido de pagamento' });
+  }
+});
+
+app.get('/api/payments/status', async (req, res) => {
+  const orderToken = String(req.query?.orderToken || '').trim();
+  if (!orderToken) return res.status(400).json({ error: 'orderToken obrigatório' });
+
+  try {
+    const order = await db.get(
+      SQL('SELECT * FROM payment_orders WHERE orderToken = $1', 'SELECT * FROM payment_orders WHERE orderToken = ?'),
+      [orderToken]
+    );
+
+    if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    let normalizedStatus = normalizePaymentStatus(order.status);
+    let providerPaymentId = order.providerpaymentid || order.providerPaymentId || '';
+    let paymentData = parseJsonSafe(order.paymentdata || order.paymentData || '{}', {});
+
+    if ((order.provider || '').toLowerCase() === 'mercadopago' && normalizedStatus !== 'paid' && providerPaymentId) {
+      try {
+        const mpPayment = await fetchMercadoPagoPayment(providerPaymentId);
+        const nextStatus = normalizeMercadoPagoStatus(mpPayment?.status);
+        const updateResult = await updatePaymentOrderStatus(
+          order,
+          nextStatus,
+          providerPaymentId,
+          { ...extractPixDataFromMercadoPago(mpPayment), mpStatus: String(mpPayment?.status || '') }
+        );
+        normalizedStatus = updateResult.status;
+        paymentData = updateResult.paymentData;
+      } catch (syncErr) {
+        console.warn('Mercado Pago status sync warning:', syncErr.message || syncErr);
+      }
+    }
+
+    res.json({
+      ok: true,
+      orderToken,
+      status: normalizedStatus,
+      provider: order.provider || 'hybrid',
+      providerPaymentId,
+      amounts: {
+        subtotal: parseMoney(order.amountsubtotal || order.amountSubtotal || 0),
+        shipping: parseMoney(order.shippingamount || order.shippingAmount || 0),
+        total: parseMoney(order.amounttotal || order.amountTotal || 0)
+      },
+      pix: {
+        key: paymentData?.qrCode || process.env.PIX_KEY || 'natripaventura@gmail.com',
+        qrCodeImage: paymentData?.qrCodeBase64 ? `data:image/png;base64,${paymentData.qrCodeBase64}` : '/img/pix-qrcode.png',
+        ticketUrl: paymentData?.ticketUrl || ''
+      },
+      updatedAt: order.updatedat || order.updatedAt || ''
+    });
+  } catch (err) {
+    console.error('Error fetching payment status:', err);
+    res.status(500).json({ error: 'Erro ao consultar status de pagamento' });
+  }
+});
+
+app.get('/api/payments/confirmed', async (req, res) => {
+  try {
+    const rows = await db.all(
+      SQL(
+        'SELECT * FROM payment_orders WHERE status = $1 ORDER BY COALESCE(updatedAt, createdAt) DESC, id DESC',
+        'SELECT * FROM payment_orders WHERE status = ? ORDER BY COALESCE(updatedAt, createdAt) DESC, id DESC'
+      ),
+      ['paid']
+    );
+
+    const result = (rows || []).map(order => {
+      const checkoutData = parseJsonSafe(order.checkoutdata || order.checkoutData || '{}', {});
+      const deliveryData = parseJsonSafe(order.deliverydata || order.deliveryData || '{}', {});
+      const paymentData = parseJsonSafe(order.paymentdata || order.paymentData || '{}', {});
+
+      const items = Array.isArray(checkoutData.items)
+        ? checkoutData.items.map(item => ({
+            id: Number(item?.id || 0),
+            name: item?.name || 'Produto',
+            qty: normalizeProductStock(item?.qty || 1) || 1,
+            unitPrice: parseMoney(item?.price || item?.unitPrice || 0)
+          }))
+        : [{
+            id: Number(checkoutData.productId || checkoutData.id || 0),
+            name: checkoutData.name || 'Produto',
+            qty: normalizeProductStock(checkoutData.qty || 1) || 1,
+            unitPrice: parseMoney(checkoutData.unitPrice || checkoutData.price || 0)
+          }];
+
+      return {
+        id: order.id,
+        orderToken: order.ordertoken || order.orderToken,
+        status: normalizePaymentStatus(order.status),
+        provider: order.provider || 'mercadopago',
+        providerPaymentId: order.providerpaymentid || order.providerPaymentId || '',
+        buyer: {
+          name: deliveryData.name || checkoutData.name || 'Cliente',
+          email: checkoutData.email || deliveryData.email || '',
+          phone: deliveryData.phone || ''
+        },
+        delivery: {
+          cep: deliveryData.cep || '',
+          street: deliveryData.street || '',
+          number: deliveryData.number || '',
+          complement: deliveryData.complement || '',
+          neighborhood: deliveryData.neighborhood || '',
+          city: deliveryData.city || '',
+          state: deliveryData.state || ''
+        },
+        amounts: {
+          subtotal: parseMoney(order.amountsubtotal || order.amountSubtotal || 0),
+          shipping: parseMoney(order.shippingamount || order.shippingAmount || 0),
+          total: parseMoney(order.amounttotal || order.amountTotal || 0)
+        },
+        items,
+        pix: {
+          ticketUrl: paymentData.ticketUrl || '',
+          mpStatus: paymentData.mpStatus || ''
+        },
+        createdAt: order.createdat || order.createdAt || '',
+        updatedAt: order.updatedat || order.updatedAt || ''
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Error fetching confirmed payments:', err);
+    res.status(500).json({ error: 'Erro ao buscar notificações de compras confirmadas' });
+  }
+});
+
+app.post('/api/payments/webhook/hybrid', async (req, res) => {
+  const expectedSecret = process.env.PAYMENT_WEBHOOK_SECRET || '';
+  if (expectedSecret) {
+    const incomingSecret = String(req.headers['x-webhook-secret'] || '');
+    if (!incomingSecret || incomingSecret !== expectedSecret) {
+      return res.status(401).json({ error: 'Webhook não autorizado' });
+    }
+  }
+
+  const orderToken = String(req.body?.orderToken || '').trim();
+  if (!orderToken) return res.status(400).json({ error: 'orderToken obrigatório' });
+
+  const nextStatus = normalizePaymentStatus(req.body?.status);
+  const providerPaymentId = String(req.body?.providerPaymentId || '').trim();
+  try {
+    const order = await db.get(
+      SQL('SELECT * FROM payment_orders WHERE orderToken = $1', 'SELECT * FROM payment_orders WHERE orderToken = ?'),
+      [orderToken]
+    );
+    if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const currentStatus = normalizePaymentStatus(order.status);
+    const updated = await updatePaymentOrderStatus(order, nextStatus, providerPaymentId);
+
+    res.json({ ok: true, orderToken, previousStatus: currentStatus, status: updated.status, stockDecremented: updated.stockDecremented });
+  } catch (err) {
+    console.error('Error processing payment webhook:', err);
+    if (String(err.message || '').includes('Estoque insuficiente')) {
+      return res.status(409).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Erro ao processar webhook de pagamento' });
+  }
+});
+
+async function processMercadoPagoWebhook(req, res) {
+  const expectedToken = getMercadoPagoWebhookToken();
+  if (expectedToken) {
+    const token = String(req.query?.token || '').trim();
+    if (!token || token !== expectedToken) {
+      return res.status(401).json({ error: 'Webhook do Mercado Pago não autorizado' });
+    }
+  }
+
+  const body = req.body || {};
+  const type = String(body?.type || body?.topic || req.query?.type || req.query?.topic || '').toLowerCase();
+  const paymentId = String(
+    body?.data?.id || body?.id || req.query?.id || req.query?.['data.id'] || ''
+  ).trim();
+
+  if (type && !String(type).includes('payment')) {
+    return res.json({ ok: true, ignored: true, reason: 'Tipo não relacionado a pagamento' });
+  }
+  if (!paymentId) return res.status(400).json({ error: 'payment id não informado no webhook' });
+
+  try {
+    const mpPayment = await fetchMercadoPagoPayment(paymentId);
+    const orderToken = String(mpPayment?.external_reference || mpPayment?.metadata?.orderToken || '').trim();
+    if (!orderToken) return res.status(400).json({ error: 'Pedido sem external_reference no Mercado Pago' });
+
+    const order = await db.get(
+      SQL('SELECT * FROM payment_orders WHERE orderToken = $1', 'SELECT * FROM payment_orders WHERE orderToken = ?'),
+      [orderToken]
+    );
+    if (!order) return res.status(404).json({ error: 'Pedido não encontrado para o webhook' });
+
+    const nextStatus = normalizeMercadoPagoStatus(mpPayment?.status);
+    const updated = await updatePaymentOrderStatus(
+      order,
+      nextStatus,
+      paymentId,
+      { ...extractPixDataFromMercadoPago(mpPayment), mpStatus: String(mpPayment?.status || '') }
+    );
+
+    res.json({ ok: true, provider: 'mercadopago', orderToken, paymentId, status: updated.status, stockDecremented: updated.stockDecremented });
+  } catch (err) {
+    console.error('Error processing Mercado Pago webhook:', err);
+    if (String(err.message || '').includes('Estoque insuficiente')) {
+      return res.status(409).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Erro ao processar webhook Mercado Pago' });
+  }
+}
+
+app.post('/api/payments/webhook/mercadopago', processMercadoPagoWebhook);
+app.get('/api/payments/webhook/mercadopago', processMercadoPagoWebhook);
 
 // Referrals
 function generateReferralCode() {

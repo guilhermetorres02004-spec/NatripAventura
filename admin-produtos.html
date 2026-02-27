@@ -23,8 +23,25 @@
             </div>
 
             <div class="form-field" style="width:100%;">
+                <label for="product-category">Categoria</label>
+                <select id="product-category" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;">
+                    <option value="">Selecione uma categoria</option>
+                    <option value="camisas (masculino)">camisas (masculino)</option>
+                    <option value="camisas (feminina)">camisas (feminina)</option>
+                    <option value="calcas (masculino)">calcas (masculino)</option>
+                    <option value="calcas (feminina)">calcas (feminina)</option>
+                    <option value="outros...">outros...</option>
+                </select>
+            </div>
+
+            <div class="form-field" style="width:100%;">
                 <label for="product-price">Preço (R$)</label>
                 <input id="product-price" type="number" min="0" step="0.01" placeholder="0.00" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:180px;" />
+            </div>
+
+            <div class="form-field" style="width:100%;">
+                <label for="product-stock">Estoque (peças)</label>
+                <input id="product-stock" type="number" min="0" step="1" placeholder="Ex: 10" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:180px;" />
             </div>
 
             <div class="form-field" style="width:100%;">
@@ -101,6 +118,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!resp.ok) throw new Error('Falha ao salvar produtos');
     }
 
+    async function deleteProduct(id){
+        const resp = await fetch('/api/products/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        if (!resp.ok) throw new Error('Falha ao remover produto');
+    }
+
     function formatBRL(v){
         return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
@@ -120,20 +146,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     <img src="${item.img}" alt="${item.name}" style="width:90px;height:70px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />
                     <div>
                         <strong style="color:#C85F00;">${item.name}</strong>
+                        <div style="color:#666;font-size:13px;">Categoria: ${item.category || '-'}</div>
                         <div style="color:#666;">${formatBRL(item.price)}</div>
+                        <div style="color:#666;font-size:13px;">Estoque: ${Number(item.stock || 0)}</div>
                     </div>
                 </div>
+                <button class="save-btn" data-action="remove" data-id="${item.id || ''}" ${item.id ? '' : 'disabled'} style="background:#c33;border-color:#c33;width:82px;padding:5px 6px;font-size:12px;line-height:1.1;">Remover</button>
             </div>
         `).join('');
     }
 
     function resetForm(){
         const nameEl = document.getElementById('product-name');
+        const categoryEl = document.getElementById('product-category');
         const priceEl = document.getElementById('product-price');
+        const stockEl = document.getElementById('product-stock');
         const imageEl = document.getElementById('product-image');
         const preview = document.getElementById('product-image-preview');
         if (nameEl) nameEl.value = '';
+        if (categoryEl) categoryEl.value = '';
         if (priceEl) priceEl.value = '';
+        if (stockEl) stockEl.value = '';
         if (imageEl) imageEl.value = '';
         if (preview) { preview.src = ''; preview.style.display = 'none'; }
         selectedImageData = '';
@@ -176,16 +209,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addBtn.addEventListener('click', async ()=>{
             const name = (document.getElementById('product-name')?.value || '').trim();
+            const category = (document.getElementById('product-category')?.value || '').trim();
             const priceRaw = document.getElementById('product-price')?.value || '';
+            const stockRaw = document.getElementById('product-stock')?.value || '';
             const price = parseFloat(priceRaw);
+            const stock = Number(stockRaw);
 
             if (!name) return alert('Preencha o nome do produto.');
+            if (!category) return alert('Selecione uma categoria.');
             if (isNaN(price) || price < 0) return alert('Informe um preço válido.');
+            if (!Number.isInteger(stock) || stock < 0) return alert('Informe um estoque válido (somente números inteiros).');
             if (!selectedImageData) return alert('Selecione uma imagem do produto.');
 
             const newItem = {
                 name,
+                category,
                 price: parseFloat(price.toFixed(2)),
+                stock,
                 image: selectedImageData,
                 createdBy: current.email,
                 createdAt: new Date().toISOString()
@@ -202,6 +242,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 msg.textContent = 'Erro ao salvar produto no servidor.';
             }
         });
+
+        const list = document.getElementById('products-list');
+        if (list) {
+            list.addEventListener('click', async (ev)=>{
+                const btn = ev.target.closest('button[data-action="remove"]');
+                if (!btn) return;
+
+                const id = Number(btn.dataset.id || 0);
+                if (!id) {
+                    msg.style.color = '#c33';
+                    msg.textContent = 'Não foi possível remover: produto sem ID.';
+                    return;
+                }
+
+                if (!window.confirm('Deseja remover este produto?')) return;
+
+                try {
+                    await deleteProduct(id);
+                    await renderProducts();
+                    msg.style.color = '#0a7';
+                    msg.textContent = 'Produto removido com sucesso!';
+                } catch (e) {
+                    msg.style.color = '#c33';
+                    msg.textContent = 'Erro ao remover produto no servidor.';
+                }
+            });
+        }
     }
 
     init();

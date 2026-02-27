@@ -15,7 +15,7 @@
     <h1 style="color:#C85F00;margin-bottom:12px;">Loja</h1>
     <p style="color:#666;margin-bottom:18px;">Confira produtos e souvenirs das nossas viagens.</p>
 
-    <div id="shop-products" class="shop-grid"></div>
+    <div id="shop-products" style="display:flex;flex-direction:column;gap:18px;"></div>
 </section>
 
 <footer>
@@ -30,6 +30,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const CART_KEY = 'natrip_shop_cart';
     let normalizedProducts = [];
+    const categoryOrder = [
+        'camisas (masculino)',
+        'camisas (feminina)',
+        'calcas (masculino)',
+        'calcas (feminina)',
+        'outros...'
+    ];
 
     const fallbackProducts = [
         { id: 'p1', name: 'Camiseta Natrip', price: 59.9, img: 'https://images.unsplash.com/photo-1520975917278-1a7a7f8c7f3a' },
@@ -54,8 +61,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const id = p.id || p.productId || `p_${Date.now()}_${Math.random()}`;
         const name = p.name || p.title || 'Produto';
         const price = Number(p.price || p.unitPrice || 0);
+        const stock = Math.max(0, parseInt(p.stock, 10) || 0);
         const img = p.img || p.image || 'https://images.unsplash.com/photo-1503602642458-232111445657';
-        return { id: String(id), name, price, img };
+        const category = String(p.category || '').trim() || 'Sem categoria';
+        return { id: String(id), name, price, stock, img, category };
     }
 
     function dedupeProducts(items){
@@ -65,6 +74,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             map.set(p.id, p);
         });
         return Array.from(map.values());
+    }
+
+    function categoryRank(category){
+        const idx = categoryOrder.indexOf(String(category || '').toLowerCase());
+        return idx === -1 ? 999 : idx;
+    }
+
+    function groupByCategory(items){
+        const groups = new Map();
+        (items || []).forEach(item => {
+            const key = item.category || 'Sem categoria';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(item);
+        });
+
+        return Array.from(groups.entries())
+            .sort((a, b) => {
+                const rankDiff = categoryRank(a[0]) - categoryRank(b[0]);
+                if (rankDiff !== 0) return rankDiff;
+                return a[0].localeCompare(b[0], 'pt-BR');
+            });
     }
 
     function addToCart(item){
@@ -89,24 +119,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             totalValue: parseFloat(item.price)
         };
         localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
-        window.location.href = 'pagamento.html';
+        window.location.href = 'entrega.html';
     }
 
     async function renderProducts(){
         const raw = await loadProducts();
         normalizedProducts = dedupeProducts(raw);
-        container.innerHTML = normalizedProducts.map(p => `
-            <div class="shop-card">
-                <img class="shop-card-image" src="${p.img}" alt="${p.name}" />
-                <div class="shop-card-content">
-                    <div class="shop-card-price">${fmtBRL(p.price)}</div>
-                    <h3 class="shop-card-name">${p.name}</h3>
-                    <div class="shop-card-actions">
-                        <button class="shop-btn shop-btn-secondary" data-action="add" data-id="${p.id}">Adicionar ao carrinho</button>
-                        <button class="shop-btn shop-btn-primary" data-action="buy" data-id="${p.id}">Comprar</button>
-                    </div>
+        const groups = groupByCategory(normalizedProducts);
+        container.innerHTML = groups.map(([category, items]) => `
+            <section style="width:100%;margin-bottom:20px;">
+                <h2 style="font-size:1.1rem;color:#333;margin:0 0 10px;">${category}</h2>
+                <div class="shop-grid">
+                    ${items.map(p => `
+                        <div class="shop-card">
+                            <img class="shop-card-image" src="${p.img}" alt="${p.name}" />
+                            <div class="shop-card-content">
+                                <div class="shop-card-price">${fmtBRL(p.price)}</div>
+                                <h3 class="shop-card-name">${p.name}</h3>
+                                <div style="display:inline-block;margin:4px 0 10px;padding:4px 10px;border-radius:999px;background:#fff3e8;color:#C85F00;font-weight:700;font-size:0.9rem;">Estoque: ${p.stock}</div>
+                                <div class="shop-card-actions">
+                                    <button class="shop-btn shop-btn-secondary" data-action="add" data-id="${p.id}">Adicionar ao carrinho</button>
+                                    <button class="shop-btn shop-btn-primary" data-action="buy" data-id="${p.id}">Comprar</button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
-            </div>
+            </section>
         `).join('');
     }
 

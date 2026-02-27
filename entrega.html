@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Entrega | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Dados de Entrega</h2>
+
+        <div style="text-align:center; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 10px;">
+            <p style="color:#666; font-size: 0.9rem; margin:0 0 6px;">Resumo do Pedido</p>
+            <div style="display:flex;justify-content:space-between;gap:10px;color:#666;font-size:0.95rem;margin-bottom:4px;">
+                <span>Subtotal</span>
+                <strong id="subtotal-display">R$ 0,00</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:10px;color:#666;font-size:0.95rem;margin-bottom:6px;">
+                <span>Frete</span>
+                <strong id="shipping-display">R$ 0,00</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:10px;color:#333;font-size:1.2rem;">
+                <span>Total</span>
+                <strong id="total-display">R$ 0,00</strong>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+            <input id="delivery-name" type="text" placeholder="Nome do destinatário" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-cep" type="text" inputmode="numeric" maxlength="9" placeholder="CEP (ex: 30140-071)" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-street" type="text" placeholder="Rua / Avenida" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-number" type="text" placeholder="Número" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-complement" type="text" placeholder="Complemento (opcional)" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-neighborhood" type="text" placeholder="Bairro" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-city" type="text" placeholder="Cidade" style="padding:10px;border-radius:8px;border:1px solid #ddd;" />
+            <input id="delivery-state" type="text" maxlength="2" placeholder="UF (ex: MG)" style="padding:10px;border-radius:8px;border:1px solid #ddd;text-transform:uppercase;" />
+        </div>
+
+        <div id="delivery-status" style="margin-top:10px;color:#666;font-size:0.95rem;"></div>
+
+        <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:10px;">
+            <a href="carrinho.html" class="shop-btn shop-btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;">Voltar</a>
+            <button id="go-payment" class="action-btn" style="background:linear-gradient(135deg,#009900,#00cc44);color:#fff;padding:10px 16px;border:none;border-radius:8px;cursor:pointer;">Ir para pagamento PIX</button>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const DELIVERY_KEY = 'natrip_delivery_address';
+    const SHIPPING_KEY = 'natrip_checkout_shipping';
+    const ORDER_TOKEN_KEY = 'natrip_checkout_order_token';
+    const PIX_DATA_KEY = 'natrip_checkout_pix_data';
+    const checkoutItem = JSON.parse(localStorage.getItem('natrip_checkout_item') || 'null');
+
+    const isShopPurchase = !!(checkoutItem && (checkoutItem.source === 'cart' || checkoutItem.city === 'Loja' || checkoutItem.productId));
+    if (!isShopPurchase) {
+        window.location.href = 'pagamento.html';
+        return;
+    }
+
+    function parseAmount(value) {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+        if (typeof value === 'string') {
+            const cleanVal = value.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+            const parsed = parseFloat(cleanVal);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+        return 0;
+    }
+
+    function formatCurrency(v){
+        return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function getCheckoutQuantity() {
+        if (checkoutItem && checkoutItem.source === 'cart' && Array.isArray(checkoutItem.items)) {
+            return checkoutItem.items.reduce((sum, item) => sum + Math.max(1, parseInt(item.qty, 10) || 1), 0);
+        }
+        return Math.max(1, parseInt(checkoutItem?.qty, 10) || 1);
+    }
+
+    function calculateShippingByCep(cep, qty, uf) {
+        const cleanCep = String(cep || '').replace(/\D/g, '');
+        if (cleanCep.length !== 8) return null;
+
+        const firstDigit = Number(cleanCep.charAt(0));
+        const quantity = Math.max(1, Number(qty || 1));
+        const ufText = String(uf || '').trim().toUpperCase();
+        let regionFactor = 0;
+
+        if (firstDigit >= 0 && firstDigit <= 3) regionFactor = 0;
+        else if (firstDigit >= 4 && firstDigit <= 5) regionFactor = 4.5;
+        else if (firstDigit >= 6 && firstDigit <= 7) regionFactor = 7.5;
+        else regionFactor = 10.5;
+
+        let ufFactor = 0;
+        if (ufText && ufText !== 'MG') ufFactor = 2.5;
+
+        const base = 11.9;
+        const perItem = (quantity - 1) * 1.8;
+        return parseFloat((base + perItem + regionFactor + ufFactor).toFixed(2));
+    }
+
+    function loadDeliveryData() {
+        try { return JSON.parse(localStorage.getItem(DELIVERY_KEY) || '{}') || {}; }
+        catch(e) { return {}; }
+    }
+
+    function collectDeliveryData() {
+        return {
+            name: (document.getElementById('delivery-name')?.value || '').trim(),
+            cep: (document.getElementById('delivery-cep')?.value || '').trim(),
+            street: (document.getElementById('delivery-street')?.value || '').trim(),
+            number: (document.getElementById('delivery-number')?.value || '').trim(),
+            complement: (document.getElementById('delivery-complement')?.value || '').trim(),
+            neighborhood: (document.getElementById('delivery-neighborhood')?.value || '').trim(),
+            city: (document.getElementById('delivery-city')?.value || '').trim(),
+            state: (document.getElementById('delivery-state')?.value || '').trim().toUpperCase()
+        };
+    }
+
+    function validateDeliveryData(data) {
+        if (!data.name || !data.cep || !data.street || !data.number || !data.neighborhood || !data.city || !data.state) {
+            return { ok: false, error: 'Preencha todos os campos obrigatórios do endereço.' };
+        }
+        if (String(data.cep).replace(/\D/g, '').length !== 8) {
+            return { ok: false, error: 'Informe um CEP válido para calcular o frete.' };
+        }
+        return { ok: true };
+    }
+
+    const subtotal = parseAmount(checkoutItem?.totalValue || 0);
+    let shippingValue = 0;
+
+    function updateSummary() {
+        const total = parseFloat((subtotal + shippingValue).toFixed(2));
+        const subtotalEl = document.getElementById('subtotal-display');
+        const shippingEl = document.getElementById('shipping-display');
+        const totalEl = document.getElementById('total-display');
+        if (subtotalEl) subtotalEl.textContent = formatCurrency(subtotal);
+        if (shippingEl) shippingEl.textContent = formatCurrency(shippingValue);
+        if (totalEl) totalEl.textContent = formatCurrency(total);
+
+        localStorage.setItem(SHIPPING_KEY, JSON.stringify({
+            shippingValue,
+            subtotal,
+            total,
+            updatedAt: new Date().toISOString()
+        }));
+    }
+
+    function recalculateShipping() {
+        const data = collectDeliveryData();
+        const statusEl = document.getElementById('delivery-status');
+        const calc = calculateShippingByCep(data.cep, getCheckoutQuantity(), data.state);
+
+        if (calc === null) {
+            shippingValue = 0;
+            updateSummary();
+            if (statusEl) statusEl.textContent = 'Informe um CEP válido para calcular o frete.';
+            return;
+        }
+
+        shippingValue = calc;
+        updateSummary();
+        if (statusEl) statusEl.textContent = `Frete calculado automaticamente: ${formatCurrency(shippingValue)}`;
+    }
+
+    const saved = loadDeliveryData();
+    const map = {
+        'delivery-name': saved.name || '',
+        'delivery-cep': saved.cep || '',
+        'delivery-street': saved.street || '',
+        'delivery-number': saved.number || '',
+        'delivery-complement': saved.complement || '',
+        'delivery-neighborhood': saved.neighborhood || '',
+        'delivery-city': saved.city || '',
+        'delivery-state': saved.state || ''
+    };
+    Object.keys(map).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = map[id];
+    });
+
+    const cepEl = document.getElementById('delivery-cep');
+    const stateEl = document.getElementById('delivery-state');
+    const inputs = ['delivery-name','delivery-cep','delivery-street','delivery-number','delivery-complement','delivery-neighborhood','delivery-city','delivery-state']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+
+    if (cepEl) {
+        cepEl.addEventListener('input', () => {
+            const digits = cepEl.value.replace(/\D/g, '').slice(0, 8);
+            cepEl.value = digits.length > 5 ? `${digits.slice(0,5)}-${digits.slice(5)}` : digits;
+        });
+    }
+
+    if (stateEl) {
+        stateEl.addEventListener('input', () => {
+            stateEl.value = stateEl.value.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase();
+        });
+    }
+
+    inputs.forEach(input => {
+        input.addEventListener('input', () => {
+            localStorage.setItem(DELIVERY_KEY, JSON.stringify(collectDeliveryData()));
+            recalculateShipping();
+        });
+    });
+
+    document.getElementById('go-payment')?.addEventListener('click', async () => {
+        const data = collectDeliveryData();
+        const check = validateDeliveryData(data);
+        if (!check.ok) return alert(check.error);
+
+        localStorage.setItem(DELIVERY_KEY, JSON.stringify(data));
+        recalculateShipping();
+
+        const btn = document.getElementById('go-payment');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Gerando cobrança...';
+        }
+
+        try {
+            async function createOrder(provider){
+                const resp = await fetch('/api/payments/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ checkoutItem, deliveryData: data, shippingValue, provider })
+                });
+                const payload = await resp.json().catch(() => ({}));
+                return { ok: resp.ok, payload };
+            }
+
+            let orderResult = await createOrder('mercadopago');
+            if (!orderResult.ok || !orderResult.payload?.orderToken) {
+                orderResult = await createOrder('hybrid');
+            }
+
+            if (!orderResult.ok || !orderResult.payload?.orderToken) {
+                throw new Error(orderResult.payload?.error || 'Não foi possível criar pedido de pagamento');
+            }
+
+            localStorage.setItem(ORDER_TOKEN_KEY, orderResult.payload.orderToken);
+            localStorage.setItem(PIX_DATA_KEY, JSON.stringify(orderResult.payload.pix || {}));
+            window.location.href = 'pagamento.html?method=pix';
+        } catch (err) {
+            alert(err && err.message ? err.message : 'Erro ao preparar pagamento');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Ir para pagamento PIX';
+            }
+        }
+    });
+
+    recalculateShipping();
+});
+</script>
+</body>
+</html>

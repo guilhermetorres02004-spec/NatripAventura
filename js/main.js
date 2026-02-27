@@ -41,6 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <a href="/shop.html">Shop</a>
                 <a href="/sobre.html">Sobre</a>
                 <a href="/contato.html">Contato</a>
+                <a href="/admin-notificacoes.html" id="admin-notifications-link" title="Notificações de compras" style="display:none;align-items:center;justify-content:center;font-size:1.2rem;line-height:1;">🔔</a>
                 <div class="perfil-menu">
                     <!-- botão que abre o dropdown de perfil -->
                     <button class="perfil-btn">👤 Perfil</button>
@@ -308,6 +309,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateHeaderAuth() {
         const perfilBtn = document.querySelector('.perfil-btn');
         const dropdown = document.getElementById('perfil-dropdown');
+        const adminBellLink = document.getElementById('admin-notifications-link');
         const current = getCurrentUser();
         if (!perfilBtn || !dropdown) return; // segurança caso header não exista
 
@@ -323,6 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } catch (e) { /* ignore */ }
 
             perfilBtn.textContent = `Olá, ${name}`;
+                    if (adminBellLink) adminBellLink.style.display = isAdmin ? 'inline-flex' : 'none';
                     dropdown.innerHTML = `
                 <div class="perfil-info">${name}</div>
                 ${isAdmin ? '<a href="/admin-usuarios.html">Usuários</a><a href="/admin-viajens.html">Viagens</a><a href="/admin-produtos.html">Produtos</a>' : ''}
@@ -334,6 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             // usuário não autenticado: oferecer link para entrar/criar conta
             perfilBtn.textContent = '👤 Perfil';
+            if (adminBellLink) adminBellLink.style.display = 'none';
             dropdown.innerHTML = `<a href="/perfil.html">Entrar / Criar Conta</a>`;
         }
 

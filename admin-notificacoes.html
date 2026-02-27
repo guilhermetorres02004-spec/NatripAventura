@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin — Notificações de Compras | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Notificações de Compras Confirmadas</h2>
+        <div id="admin-msg" style="margin-bottom:12px;color:#c33;"></div>
+        <div id="confirmed-orders-list"></div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const auth = window.natripAuth;
+    const current = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser')||'null');
+    const msg = document.getElementById('admin-msg');
+
+    if (!current) { msg.textContent='Acesso restrito: faça login como administrador.'; return; }
+
+    function getUsers(){
+        try { return JSON.parse(localStorage.getItem('natrip_users') || '[]'); } catch(e){ return []; }
+    }
+
+    async function checkAdmin() {
+        try {
+            const resp = await fetch('/api/users');
+            if (!resp.ok) {
+                const usersLocal = getUsers();
+                const fullLocal = usersLocal.find(u => u.email === current.email);
+                if (!fullLocal || fullLocal.role !== 'admin') { msg.textContent='Acesso negado. Somente administradores.'; return false; }
+                return true;
+            }
+            const users = await resp.json();
+            const full = users.find(u => u.email === current.email);
+            if (!full || full.role !== 'admin') { msg.textContent='Acesso negado. Somente administradores.'; return false; }
+            return true;
+        } catch (e) {
+            const usersLocal = getUsers();
+            const fullLocal = usersLocal.find(u => u.email === current.email);
+            if (!fullLocal || fullLocal.role !== 'admin') { msg.textContent='Acesso negado. Somente administradores.'; return false; }
+            return true;
+        }
+    }
+
+    function fmtBRL(v){
+        return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function fmtDate(value){
+        const d = new Date(value || '');
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR');
+    }
+
+    function renderItems(items){
+        if (!Array.isArray(items) || !items.length) return '<span style="color:#666;">Sem itens detalhados.</span>';
+        return items.map(item => {
+            const name = item.name || 'Produto';
+            const qty = Number(item.qty || 1);
+            const unit = Number(item.unitPrice || 0);
+            return `<div style="font-size:13px;color:#444;">• ${name} — Qtd: ${qty} — Unit: ${fmtBRL(unit)}</div>`;
+        }).join('');
+    }
+
+    function renderDelivery(delivery){
+        if (!delivery) return '-';
+        const line1 = [delivery.street, delivery.number].filter(Boolean).join(', ');
+        const line2 = [delivery.neighborhood, delivery.city, delivery.state].filter(Boolean).join(' - ');
+        const cep = delivery.cep ? `CEP: ${delivery.cep}` : '';
+        const comp = delivery.complement ? `(${delivery.complement})` : '';
+        return [line1, comp, line2, cep].filter(Boolean).join(' ');
+    }
+
+    async function loadConfirmedOrders(){
+        const list = document.getElementById('confirmed-orders-list');
+        if (!list) return;
+
+        list.innerHTML = '<p style="color:#666;">Carregando notificações...</p>';
+
+        try {
+            const resp = await fetch('/api/payments/confirmed');
+            if (!resp.ok) throw new Error('Falha ao buscar compras confirmadas');
+
+            const orders = await resp.json();
+            if (!Array.isArray(orders) || !orders.length) {
+                list.innerHTML = '<p style="color:#666;">Nenhuma compra confirmada no momento.</p>';
+                return;
+            }
+
+            list.innerHTML = orders.map(order => `
+                <div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:14px;box-shadow:0 6px 18px rgba(0,0,0,0.06);border-left:4px solid #0a7;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+                        <div>
+                            <strong style="color:#333;">${order.buyer?.name || 'Cliente'}</strong>
+                            <div style="font-size:13px;color:#666;">${order.buyer?.email || ''}</div>
+                        </div>
+                        <div style="font-size:12px;color:#666;text-align:right;">
+                            <div><b>Status:</b> ${order.status || 'paid'}</div>
+                            <div><b>Pedido:</b> ${order.orderToken || '-'}</div>
+                            <div><b>Atualizado:</b> ${fmtDate(order.updatedAt)}</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:10px;display:grid;gap:6px;">
+                        <div style="font-size:13px;color:#444;"><b>Entrega:</b> ${renderDelivery(order.delivery)}</div>
+                        <div style="font-size:13px;color:#444;"><b>Subtotal:</b> ${fmtBRL(order.amounts?.subtotal)} | <b>Frete:</b> ${fmtBRL(order.amounts?.shipping)} | <b>Total:</b> ${fmtBRL(order.amounts?.total)}</div>
+                        <div style="font-size:13px;color:#444;"><b>Pagamento:</b> ${order.provider || '-'} ${order.providerPaymentId ? `| ID: ${order.providerPaymentId}` : ''}</div>
+                        <div style="margin-top:4px;"><b style="font-size:13px;color:#333;">Itens:</b>${renderItems(order.items)}</div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            list.innerHTML = '<p style="color:#c33;">Erro ao carregar notificações de compras.</p>';
+        }
+    }
+
+    async function init(){
+        const ok = await checkAdmin();
+        if (!ok) return;
+        msg.style.color = '#666';
+        msg.textContent = 'Exibindo compras confirmadas.';
+        await loadConfirmedOrders();
+    }
+
+    init();
+});
+</script>
+</body>
+</html>

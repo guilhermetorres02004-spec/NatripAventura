@@ -574,8 +574,11 @@ html { scroll-behavior: smooth; }
 
 .shop-card-image {
     width: 100%;
-    height: 200px;
-    object-fit: cover;
+    aspect-ratio: 4 / 3;
+    height: auto;
+    object-fit: contain;
+    background: #f7f7f7;
+    padding: 8px;
     display: block;
 }
 

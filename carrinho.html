@@ -13,10 +13,7 @@
 <section class="perfil-container">
     <div class="perfil-card">
         <h2>Carrinho</h2>
-        <!-- Página de carrinho: deve listar itens que o usuário adicionou antes de finalizar.
-             Atualmente é um placeholder. Podemos implementar armazenamento em localStorage para persistir itens.
-        -->
-        <p>Seu carrinho está vazio (placeholder).</p>
+        <div id="cart-content"></div>
     </div>
 </section>
 
@@ -25,5 +22,98 @@
 </footer>
 
 <script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const CART_KEY = 'natrip_shop_cart';
+    const cartContent = document.getElementById('cart-content');
+    if (!cartContent) return;
+
+    function fmtBRL(v){
+        return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function loadCart(){
+        try {
+            const raw = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+            return Array.isArray(raw) ? raw : [];
+        } catch(e) {
+            return [];
+        }
+    }
+
+    function saveCart(items){
+        localStorage.setItem(CART_KEY, JSON.stringify(items));
+    }
+
+    function removeItem(id){
+        const items = loadCart().filter(i => String(i.id) !== String(id));
+        saveCart(items);
+        render();
+    }
+
+    function finalizeCart(){
+        const items = loadCart();
+        if (!items.length) return;
+
+        const total = items.reduce((acc, item) => acc + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+        const checkoutItem = {
+            source: 'cart',
+            items,
+            totalValue: parseFloat(total.toFixed(2))
+        };
+
+        localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
+        window.location.href = 'entrega.html';
+    }
+
+    function render(){
+        const items = loadCart();
+        if (!items.length) {
+            cartContent.innerHTML = '<p style="color:#666;">Seu carrinho está vazio.</p>';
+            return;
+        }
+
+        const total = items.reduce((acc, item) => acc + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+
+        cartContent.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                ${items.map(item => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;background:#fff;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06);">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <img src="${item.img || ''}" alt="${item.name || 'Produto'}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #eee;" />
+                            <div>
+                                <strong style="color:#C85F00;">${item.name || 'Produto'}</strong>
+                                <div style="color:#666;">Qtd: ${Number(item.qty || 1)} · ${fmtBRL(item.price || 0)}</div>
+                                <div style="color:#333;font-weight:600;">Subtotal: ${fmtBRL(Number(item.price || 0) * Number(item.qty || 1))}</div>
+                            </div>
+                        </div>
+                        <button data-remove-id="${item.id}" class="shop-btn shop-btn-secondary">Remover</button>
+                    </div>
+                `).join('')}
+                <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;">
+                    <strong>Total</strong>
+                    <strong style="color:#C85F00;">${fmtBRL(total)}</strong>
+                </div>
+                <button data-action="checkout" class="shop-btn" style="align-self:flex-end;">Finalizar compras</button>
+            </div>
+        `;
+    }
+
+    cartContent.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button[data-remove-id]');
+        if (btn) {
+            removeItem(btn.dataset.removeId);
+            return;
+        }
+
+        const checkoutBtn = ev.target.closest('button[data-action="checkout"]');
+        if (checkoutBtn) {
+            finalizeCart();
+        }
+    });
+
+    render();
+});
+</script>
 </body>
 </html>

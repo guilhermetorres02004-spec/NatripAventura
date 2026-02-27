@@ -18,9 +18,9 @@
     <div class="perfil-card">
         <h2>Login</h2>
         <!-- Formulário de login: ids principais -> login-email, login-password, login-form -->
-        <form id="login-form">
-            <input id="login-email" type="email" placeholder="E-mail" required>
-            <input id="login-password" type="password" placeholder="Senha" required>
+        <form id="login-form" autocomplete="off">
+            <input id="login-email" type="email" placeholder="E-mail" required autocomplete="off" autocapitalize="off" spellcheck="false">
+            <input id="login-password" type="password" placeholder="Senha" required autocomplete="new-password">
             <button type="submit">Entrar</button>
             <p class="form-msg" id="login-msg"></p>
         </form>
@@ -29,12 +29,12 @@
     <div class="perfil-card">
         <h2>Criar Conta</h2>
         <!-- Formulário de cadastro: inclui CPF e Telefone; ids usados por JS: signup-name, signup-cpf, signup-phone, signup-email, signup-password -->
-        <form id="signup-form">
-            <input id="signup-name" type="text" placeholder="Nome completo" required>
-            <input id="signup-cpf" type="text" placeholder="CPF" required>
-            <input id="signup-phone" type="tel" placeholder="Telefone" required>
-            <input id="signup-email" type="email" placeholder="E-mail" required>
-            <input id="signup-password" type="password" placeholder="Senha" required>
+        <form id="signup-form" autocomplete="off">
+            <input id="signup-name" type="text" placeholder="Nome completo" required autocomplete="off">
+            <input id="signup-cpf" type="text" placeholder="CPF" required autocomplete="off" inputmode="numeric">
+            <input id="signup-phone" type="tel" placeholder="Telefone" required autocomplete="off" inputmode="tel">
+            <input id="signup-email" type="email" placeholder="E-mail" required autocomplete="off" autocapitalize="off" spellcheck="false">
+            <input id="signup-password" type="password" placeholder="Senha" required autocomplete="new-password">
             
             <select id="signup-source" required style="width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: 'Poppins', sans-serif; color: #666;">
                 <option value="">Como conheceu nosso site?</option>
@@ -89,8 +89,48 @@
         }
     });
     
+    function clearLoginFields() {
+        const loginEmail = document.getElementById('login-email');
+        const loginPassword = document.getElementById('login-password');
+        if (loginEmail) loginEmail.value = '';
+        if (loginPassword) loginPassword.value = '';
+    }
+
+    function clearSignupFields() {
+        const signupName = document.getElementById('signup-name');
+        const signupCpf = document.getElementById('signup-cpf');
+        const signupPhone = document.getElementById('signup-phone');
+        const signupEmail = document.getElementById('signup-email');
+        const signupPassword = document.getElementById('signup-password');
+        const signupSource = document.getElementById('signup-source');
+        const signupSourceOther = document.getElementById('signup-source-other');
+        const signupReferral = document.getElementById('signup-referral-link');
+
+        if (signupName) signupName.value = '';
+        if (signupCpf) signupCpf.value = '';
+        if (signupPhone) signupPhone.value = '';
+        if (signupEmail) signupEmail.value = '';
+        if (signupPassword) signupPassword.value = '';
+        if (signupSource) signupSource.value = '';
+
+        if (signupSourceOther) {
+            signupSourceOther.value = '';
+            signupSourceOther.style.display = 'none';
+            signupSourceOther.required = false;
+        }
+
+        if (signupReferral) {
+            signupReferral.value = '';
+            signupReferral.style.display = 'none';
+            signupReferral.required = false;
+        }
+    }
+
     // Preencher automaticamente se houver ?ref= na URL
     window.addEventListener('DOMContentLoaded', function() {
+        clearLoginFields();
+        clearSignupFields();
+
         const urlParams = new URLSearchParams(window.location.search);
         const refCode = urlParams.get('ref');
         
@@ -113,6 +153,24 @@
                 if (signupCard) {
                     signupCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
+            }
+        }
+    });
+
+    // Em retorno de navegação (back/forward cache), garante que login/senha também fiquem vazios.
+    window.addEventListener('pageshow', function() {
+        clearLoginFields();
+        clearSignupFields();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const refCode = urlParams.get('ref');
+        if (refCode) {
+            const sourceSelect = document.getElementById('signup-source');
+            const referralField = document.getElementById('signup-referral-link');
+            if (sourceSelect && referralField) {
+                sourceSelect.value = 'Amigo';
+                referralField.style.display = 'block';
+                referralField.value = refCode.toUpperCase();
             }
         }
     });
