@@ -225,6 +225,18 @@ if (USE_POSTGRES) {
       try {
         await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS stock INTEGER DEFAULT 0');
       } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS createdBy VARCHAR(255)');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS createdAt VARCHAR(50)');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN IF NOT EXISTS price DECIMAL(10,2)');
+      } catch (e) {}
 
       await db.run(`
         CREATE TABLE IF NOT EXISTS payment_orders (
@@ -316,6 +328,18 @@ if (USE_POSTGRES) {
       } catch (e) {}
       try {
         await db.run('ALTER TABLE products ADD COLUMN stock INTEGER DEFAULT 0');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN createdBy TEXT');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN createdAt TEXT');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN image TEXT');
+      } catch (e) {}
+      try {
+        await db.run('ALTER TABLE products ADD COLUMN price REAL');
       } catch (e) {}
 
       await db.run(`
