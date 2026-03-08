@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Pagamento | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+    @media (max-width: 640px) {
+        .perfil-container {
+            max-width: 100vw;
+            padding: 0 4px;
+        }
+        .perfil-card {
+            border-radius: 10px;
+            padding: 8px;
+            font-size: 1rem;
+        }
+        .perfil-card h2 {
+            font-size: 1.1rem;
+        }
+        .perfil-card input,
+        .perfil-card select {
+            font-size: 0.95rem;
+            padding: 8px;
+        }
+    }
+    </style>
+</head>
+<body>
+    <section class="perfil-container">
+        <div class="perfil-card">
+            <h2>Finalizar Pagamento</h2>
+            
+            <div class="payment-tabs">
+                <button class="tab-btn active" onclick="switchTab('pix')" id="tab-btn-pix">PIX</button>
+                <button class="tab-btn" id="tab-btn-card" disabled title="Pagamento com cartão temporariamente indisponível" style="opacity:0.6;cursor:not-allowed;">Cartão de Crédito (em breve)</button>
+            </div>
+
+            <div style="text-align:center; margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 10px;">
+                <p style="color:#666; font-size: 0.9rem; margin:0 0 6px;">Resumo do Pedido</p>
+                <div style="display:flex;justify-content:space-between;gap:10px;color:#666;font-size:0.95rem;margin-bottom:4px;">
+                    <span>Subtotal</span>
+                    <strong id="subtotal-display">R$ 0,00</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;color:#666;font-size:0.95rem;margin-bottom:6px;">
+                    <span>Frete</span>
+                    <strong id="shipping-display">R$ 0,00</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;color:#333;font-size:1.2rem;">
+                    <span>Total a pagar</span>
+                    <strong id="total-display">R$ 0,00</strong>
+                </div>
+            </div>
+
+            <!-- ABA PIX -->
+            <div id="tab-pix" class="payment-method active">
+                <p>Escaneie o QR Code abaixo ou copie a chave para finalizar sua compra.</p>
+                <img id="pix-qr-image" src="img/pix-qrcode.png" alt="QR Code PIX" style="margin:20px auto;display:block; max-width: 200px;">
+                <p style="font-size:1.1rem;word-break:break-all;">Chave PIX: <b id="pix-key-text">natripaventura@gmail.com</b></p>
+                <p style="margin-top:18px;color:#666;">Após o pagamento, envie o comprovante para nosso WhatsApp: <b>(31) 97537-6707</b></p>
+                <div id="pix-live-status" style="margin-top:10px;color:#666;font-size:0.95rem;text-align:center;">Aguardando confirmação do pagamento...</div>
+                <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                    <button id="btn-pago-pix" class="action-btn" style="display:block;margin:22px auto 0;background:linear-gradient(135deg,#009900,#00cc44);color:#fff;padding:12px 28px;border:none;border-radius:10px;font-size:1.1rem;cursor:pointer;">Verificar pagamento</button>
+                    <button id="btn-paid-manual" class="action-btn" style="display:block;margin:22px auto 0;background:linear-gradient(135deg,#E76F00,#C85F00);color:#fff;padding:12px 28px;border:none;border-radius:10px;font-size:1.1rem;cursor:pointer;">Já paguei</button>
+                </div>
+            </div>
+
+            <!-- ABA CARTÃO -->
+            <div id="tab-card" class="payment-method">
+                <div class="card-form">
+                    <h3>Pagar com PayPal ou Cartão</h3>
+                    <p style="margin-bottom: 20px; color: #666;">Use sua conta PayPal ou Cartão de Crédito de forma segura.</p>
+                    
+                    <!-- Container onde o botão do PayPal será renderizado -->
+                    <div id="paypal-button-container"></div>
+                    
+                    <div id="pagamento-status" style="display:none; text-align:center; margin-top:20px; padding:15px; background:#d4edda; color:#155724; border-radius:8px;"></div>
+                </div>
+            </div>
+
+            <div id="pagamento-status" style="margin-top:25px;font-size:1.1rem;font-weight:600;color:#009900;display:none;text-align:center;">
+                Pagamento realizado com sucesso! 🎉<br>
+                <span style="font-size:0.9rem;color:#666;font-weight:400">Você receberá um e-mail de confirmação em breve.</span>
+            </div>
+            
+            <!-- Seção de Convite -->
+            <div id="referral-section" style="display:none; margin-top:30px; padding:25px; background:#f0f8ff; border-radius:12px; border-left:4px solid #0a7;">
+                <h3 style="margin:0 0 10px 0; color:#333; font-size:1.2rem;">🎁 Convide um amigo para ir com voce!</h3>
+                <p style="margin:0 0 15px 0; color:#666; font-size:0.95rem;">Compartilhe seu link para fazer uma viajem inesquecivel com um amigo.</p>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button 
+                        id="copy-referral-btn" 
+                        onclick="copyReferralLink()"
+                        style="padding:12px 24px; background:#0a7; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:1rem; transition:background 0.3s;"
+                        onmouseover="this.style.background='#08a'"
+                        onmouseout="this.style.background='#0a7'"
+                    >
+                        📋 Copiar Link de Convite
+                    </button>
+                    <span id="copy-msg" style="font-size:0.9rem; font-weight:500;"></span>
+                </div>
+            </div>
+            
+            <a href="minhas-compras.html" style="display:inline-block;margin-top:18px;color:#C85F00;text-decoration:underline;">Voltar para Minhas Compras</a>
+        </div>
+    </section>
+    <footer>
+        <p>© 2026 Natrip Aventura</p>
+    </footer>
+    <script src="js/main.js"></script>
+    <!-- 
+      Integração PayPal REAL (Produção)
+      Client ID configurado corretamente.
+    -->
+    <script src="https://www.paypal.com/sdk/js?client-id=AfSA4W32kTqZ6zGXfj5OU1BKt1CIAj8klNI5lugtWPvkam8_jN2KZS11ld5pZFposuC8yNbBYsUaoKaT&currency=BRL&enable-funding=credit,card"></script>
+
+    <script>
+    // Recupera item do checkout
+    const checkoutItem = JSON.parse(localStorage.getItem('natrip_checkout_item') || 'null');
+    const CART_KEY = 'natrip_shop_cart';
+    const DELIVERY_KEY = 'natrip_delivery_address';
+    const SHIPPING_KEY = 'natrip_checkout_shipping';
+    const ORDER_TOKEN_KEY = 'natrip_checkout_order_token';
+    const PIX_DATA_KEY = 'natrip_checkout_pix_data';
+    const CARD_PAYMENT_ENABLED = false;
+    let paymentAlreadyFinalized = false;
+    let paymentPollHandle = null;
+    const isShopPurchase = !!(checkoutItem && (checkoutItem.source === 'cart' || checkoutItem.city === 'Loja' || checkoutItem.productId));
+    const orderToken = String(localStorage.getItem(ORDER_TOKEN_KEY) || '').trim();
+
+    function parseAmount(value) {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+        if (typeof value === 'string') {
+            const cleanVal = value.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+            const parsed = parseFloat(cleanVal);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+        return 0;
+    }
+
+    const subtotalPagamento = parseAmount(checkoutItem ? checkoutItem.totalValue : 1.00) || 1.00;
+    let shippingValue = 0;
+    let valorTotalPagamento = subtotalPagamento;
+
+    function formatCurrency(val) {
+        return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function updateCheckoutTotals() {
+        valorTotalPagamento = parseFloat((subtotalPagamento + shippingValue).toFixed(2));
+        const subtotalEl = document.getElementById('subtotal-display');
+        const shippingEl = document.getElementById('shipping-display');
+        const totalEl = document.getElementById('total-display');
+        if (subtotalEl) subtotalEl.textContent = formatCurrency(subtotalPagamento);
+        if (shippingEl) shippingEl.textContent = formatCurrency(shippingValue);
+        if (totalEl) totalEl.textContent = formatCurrency(valorTotalPagamento);
+    }
+
+    function loadDeliveryData() {
+        try {
+            return JSON.parse(localStorage.getItem(DELIVERY_KEY) || '{}') || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function loadShippingData() {
+        try {
+            return JSON.parse(localStorage.getItem(SHIPPING_KEY) || '{}') || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function loadPixData() {
+        try {
+            return JSON.parse(localStorage.getItem(PIX_DATA_KEY) || '{}') || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function applyPixData(pix) {
+        const qrImg = document.getElementById('pix-qr-image');
+        const keyEl = document.getElementById('pix-key-text');
+        if (qrImg && pix?.qrCodeImage) qrImg.src = pix.qrCodeImage;
+        if (keyEl && pix?.key) keyEl.textContent = pix.key;
+    }
+
+    function validateDeliveryData(data) {
+        if (!isShopPurchase) return { ok: true };
+        if (!data || !data.name || !data.cep || !data.street || !data.number || !data.neighborhood || !data.city || !data.state) {
+            return { ok: false, error: 'Preencha todos os campos obrigatórios do endereço.' };
+        }
+        if (String(data.cep).replace(/\D/g, '').length !== 8) {
+            return { ok: false, error: 'Informe um CEP válido para calcular o frete.' };
+        }
+        return { ok: true };
+    }
+
+    async function finalizeSuccessfulPayment(redirectDelayMs = 6000) {
+        if (paymentAlreadyFinalized) return;
+        paymentAlreadyFinalized = true;
+
+        if (isShopPurchase) {
+            const data = loadDeliveryData();
+            const check = validateDeliveryData(data);
+            if (!check.ok) {
+                paymentAlreadyFinalized = false;
+                throw new Error(check.error);
+            }
+        }
+
+        if (checkoutItem && checkoutItem.source === 'cart') {
+            localStorage.removeItem(CART_KEY);
+        }
+        setTimeout(() => {
+            localStorage.removeItem('natrip_checkout_item');
+            localStorage.removeItem(SHIPPING_KEY);
+            localStorage.removeItem(ORDER_TOKEN_KEY);
+            window.location.href = 'minhas-compras.html';
+        }, redirectDelayMs);
+    }
+
+    async function fetchPaymentStatus(showAlerts = false) {
+        if (!isShopPurchase) return null;
+        if (!orderToken) {
+            if (showAlerts) alert('Pedido de pagamento não encontrado. Refaça pelo endereço de entrega.');
+            return null;
+        }
+
+        const statusEl = document.getElementById('pix-live-status');
+        const resp = await fetch(`/api/payments/status?orderToken=${encodeURIComponent(orderToken)}`);
+        const payload = await resp.json();
+
+        if (!resp.ok) {
+            if (statusEl) statusEl.textContent = payload?.error || 'Erro ao consultar pagamento.';
+            if (showAlerts) alert(payload?.error || 'Erro ao consultar pagamento.');
+            return null;
+        }
+
+        const status = String(payload?.status || 'pending').toLowerCase();
+        if (payload?.pix) {
+            applyPixData(payload.pix);
+            localStorage.setItem(PIX_DATA_KEY, JSON.stringify(payload.pix));
+        }
+        if (status === 'paid') {
+            if (statusEl) statusEl.textContent = 'Pagamento confirmado automaticamente ✅';
+            await finalizeSuccessfulPayment(2000);
+            return payload;
+        }
+
+        if (status === 'failed') {
+            if (statusEl) statusEl.textContent = 'Pagamento não aprovado. Tente novamente.';
+            if (showAlerts) alert('Pagamento não aprovado ainda.');
+            return payload;
+        }
+
+        if (statusEl) statusEl.textContent = 'Pagamento pendente. Aguardando confirmação automática...';
+        if (showAlerts) alert('Pagamento ainda pendente. Assim que confirmar, a tela finaliza automaticamente.');
+        return payload;
+    }
+
+    function startPaymentPolling() {
+        if (!isShopPurchase || !orderToken) return;
+        if (paymentPollHandle) clearInterval(paymentPollHandle);
+        paymentPollHandle = setInterval(() => {
+            if (paymentAlreadyFinalized) {
+                clearInterval(paymentPollHandle);
+                paymentPollHandle = null;
+                return;
+            }
+            fetchPaymentStatus(false).catch(() => {});
+        }, 5000);
+    }
+
+    async function markOrderPaidManually() {
+        if (!isShopPurchase || !orderToken) return;
+
+        const providerPaymentId = `manual-${Date.now()}`;
+        const resp = await fetch('/api/payments/webhook/hybrid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderToken, status: 'paid', providerPaymentId })
+        });
+
+        if (!resp.ok) {
+            let msg = 'Não foi possível confirmar o pagamento manualmente.';
+            try {
+                const data = await resp.json();
+                if (data?.error) msg = data.error;
+            } catch (e) {}
+            throw new Error(msg);
+        }
+    }
+
+    // Gerenciamento de Abas
+    function switchTab(method) {
+        if (method === 'card' && !CARD_PAYMENT_ENABLED) return;
+
+        // Remove active de todos
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.payment-method').forEach(div => div.classList.remove('active'));
+        
+        // Adiciona active no selecionado
+        const btn = document.getElementById(`tab-btn-${method}`);
+        const tab = document.getElementById(`tab-${method}`);
+        if (btn) btn.classList.add('active');
+        if (tab) tab.classList.add('active');
+        
+        // Reseta status se mudar de aba
+        document.getElementById('pagamento-status').style.display = 'none';
+        
+        // Re-exibe os botões de ação caso tenham sido ocultados
+        if(method === 'pix') document.getElementById('btn-pago-pix').style.display = 'block';
+        if(method === 'card') {
+            const btnPagoCard = document.getElementById('btn-pago-card');
+            if (btnPagoCard) btnPagoCard.style.display = 'block';
+        }
+    }
+
+    // Lógica PIX (Simulação)
+    document.getElementById('btn-pago-pix').addEventListener('click', function() {
+        const btn = this;
+        btn.textContent = 'Verificando...';
+        btn.disabled = true;
+
+        setTimeout(async function() {
+            try {
+                if (isShopPurchase) {
+                    await fetchPaymentStatus(true);
+                } else {
+                    await finalizeSuccessfulPayment();
+                    document.getElementById('pagamento-status').style.display = 'block';
+                    showReferralSection();
+                }
+            } catch (err) {
+                alert(err && err.message ? err.message : 'Erro ao verificar pagamento.');
+            } finally {
+                if (!paymentAlreadyFinalized) {
+                    btn.textContent = 'Verificar pagamento';
+                    btn.disabled = false;
+                }
+            }
+        }, 1200);
+    });
+
+    document.getElementById('btn-paid-manual')?.addEventListener('click', async function() {
+        const btn = this;
+        if (!window.confirm('Confirma que o pagamento foi realizado?')) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Confirmando...';
+        try {
+            if (isShopPurchase) {
+                await markOrderPaidManually();
+            }
+            await finalizeSuccessfulPayment(1500);
+            document.getElementById('pagamento-status').style.display = 'block';
+            showReferralSection();
+        } catch (err) {
+            alert(err && err.message ? err.message : 'Erro ao confirmar pagamento manual.');
+            btn.disabled = false;
+            btn.textContent = 'Já paguei';
+        }
+    });
+
+    // Inicializa o botão do PayPal usando endpoints server-side para criar/capturar ordem
+    if (CARD_PAYMENT_ENABLED) {
+        paypal.Buttons({
+            createOrder: function(data, actions) {
+                // ask server to create order and return orderID
+                return fetch('/api/paypal/create-order', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: valorTotalPagamento.toString() })
+                }).then(r => r.json()).then(resp => {
+                    if (!resp || !resp.id) throw new Error('Não foi possível criar ordem PayPal');
+                    return resp.id;
+                });
+            },
+            onApprove: function(data, actions) {
+                // capture via server to keep credentials secret and get full details
+                return fetch('/api/paypal/capture-order', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderID: data.orderID })
+                }).then(r => r.json()).then(details => {
+                    if (details && details.status && (details.status === 'COMPLETED' || details.status === 'completed')) {
+                        const statusDiv = document.getElementById('pagamento-status');
+                        document.getElementById('paypal-button-container').style.display = 'none';
+                        const payerName = (details.payer && details.payer.name && details.payer.name.given_name) ? details.payer.name.given_name : '';
+                        statusDiv.innerHTML = `
+                            <h3>Pagamento Realizado! 🎉</h3>
+                            <p>Obrigado, ${payerName}!</p>
+                            <p>ID da Transação: ${details.purchase_units && details.purchase_units[0] && details.purchase_units[0].payments && details.purchase_units[0].payments.captures && details.purchase_units[0].payments.captures[0] ? details.purchase_units[0].payments.captures[0].id : data.orderID}</p>
+                            <small>Você será redirecionado em instantes...</small>
+                        `;
+                        statusDiv.style.display = 'block';
+                        showReferralSection();
+                        return finalizeSuccessfulPayment();
+                    } else {
+                        console.error('Capture response', details);
+                        alert('Ocorreu um erro ao confirmar o pagamento.');
+                    }
+                }).catch(err => { console.error(err); alert('Ocorreu um erro no processamento do PayPal. Tente novamente.'); });
+            },
+            onError: function(err) { console.error(err); alert('Ocorreu um erro no processamento do PayPal. Tente novamente.'); }
+        }).render('#paypal-button-container');
+    } else {
+        document.getElementById('tab-card').style.display = 'none';
+    }
+
+    // Inicialização da página
+    function initPayment() {
+        applyPixData(loadPixData());
+        if (isShopPurchase) {
+            const shippingData = loadShippingData();
+            shippingValue = Number(shippingData?.shippingValue || 0);
+            if (!Number.isFinite(shippingValue) || shippingValue < 0) shippingValue = 0;
+            const check = validateDeliveryData(loadDeliveryData());
+            if (!check.ok) {
+                alert('Antes do pagamento, preencha seu endereço de entrega.');
+                window.location.href = 'entrega.html';
+                return;
+            }
+            if (!orderToken) {
+                alert('Pedido de pagamento não encontrado. Refaça os dados de entrega.');
+                window.location.href = 'entrega.html';
+                return;
+            }
+        } else {
+            shippingValue = 0;
+            const statusEl = document.getElementById('pix-live-status');
+            if (statusEl) statusEl.style.display = 'none';
+        }
+        updateCheckoutTotals();
+        if (isShopPurchase) {
+            fetchPaymentStatus(false).catch(() => {});
+            startPaymentPolling();
+        }
+    }
+    
+    // Inicia
+    initPayment();
+    
+    // Funções de convite
+    let userReferralLink = '';
+    
+    async function showReferralSection() {
+        const auth = window.natripAuth;
+        const user = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        
+        if (!user || !user.email) return;
+        
+        try {
+            const response = await fetch(`http://localhost:3000/api/referral-code?email=${encodeURIComponent(user.email)}`);
+            const data = await response.json();
+            
+            if (response.ok && data.referralCode) {
+                const baseUrl = window.location.origin;
+                userReferralLink = `${baseUrl}/perfil.html?ref=${data.referralCode}`;
+                document.getElementById('referral-section').style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Erro ao carregar código de convite:', error);
+        }
+    }
+    
+    function copyReferralLink() {
+        const copyMsg = document.getElementById('copy-msg');
+        
+        if (!userReferralLink) {
+            copyMsg.textContent = '✗ Erro ao copiar link';
+            copyMsg.style.color = '#c33';
+            return;
+        }
+        
+        navigator.clipboard.writeText(userReferralLink).then(() => {
+            copyMsg.textContent = '✓ Link copiado!';
+            copyMsg.style.color = '#0a7';
+            setTimeout(() => {
+                copyMsg.textContent = '';
+            }, 3000);
+        }).catch(err => {
+            copyMsg.textContent = '✗ Erro ao copiar';
+            copyMsg.style.color = '#c33';
+        });
+    }
+    </script>
+</body>
+</html>
