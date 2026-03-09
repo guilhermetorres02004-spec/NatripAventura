@@ -2,14 +2,9 @@
   "version": 2,
   "builds": [
     { "src": "server.js", "use": "@vercel/node" }
-    // note: static assets (html/css/js/img) are served automatically from the
-    // repo root; no separate build is required.  You may also move them into a
-    // `public/` directory if you prefer.
   ],
   "routes": [
-    // delegate anything under `/api/` to the Node function
     { "src": "^/api/(.*)", "dest": "server.js" },
-    // everything else should be handled as a static file by Vercel
     { "src": "^/(.*)", "dest": "/$1" }
   ],
   "env": {
