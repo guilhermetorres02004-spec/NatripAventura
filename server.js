@@ -25,6 +25,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Content-Security-Policy: permitir estilos de gstatic (usado pelo Google Translate
+// widget) e permitir recursos próprios. Ajuste conforme precisar.
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; style-src 'self' https://www.gstatic.com 'unsafe-inline';");
+  next();
+});
+
 // avoid 500 when browsers look for favicon
 app.get('/favicon.ico', (req, res) => res.sendStatus(204));
 
