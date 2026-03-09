@@ -25,6 +25,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// avoid 500 when browsers look for favicon
+app.get('/favicon.ico', (req, res) => res.sendStatus(204));
+
 // Servir arquivos estáticos (HTML/CSS/JS) a partir da raiz do projeto
 app.use(express.static(path.join(__dirname)));
 
