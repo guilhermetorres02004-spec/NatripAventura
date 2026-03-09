@@ -25,6 +25,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// serve root explicitly (some builds omit static files) so we never return 404
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Content-Security-Policy: permitir estilos de gstatic (usado pelo Google Translate
 // widget) e permitir recursos próprios. Ajuste conforme precisar.
 app.use((req, res, next) => {
