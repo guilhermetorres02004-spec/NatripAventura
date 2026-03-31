@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin — Histórico de Vendas | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<section class="perfil-container">
+    <div class="perfil-card sales-dashboard">
+        <h2>Dashboard de Histórico de Vendas</h2>
+        <div id="admin-msg" style="margin-bottom:12px;color:#c33;"></div>
+
+        <div class="sales-filters">
+            <div class="form-field">
+                <label for="period-select">Período</label>
+                <select id="period-select">
+                    <option value="monthly">Mensal</option>
+                    <option value="weekly">Semanal</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="date-input">Data de referência</label>
+                <input id="date-input" type="date" />
+            </div>
+            <div class="form-field" style="display:flex;align-items:flex-end;">
+                <button id="refresh-btn" class="save-btn" style="width:auto;">Atualizar</button>
+            </div>
+        </div>
+
+        <div class="sales-kpis" id="sales-kpis"></div>
+
+        <div class="sales-section">
+            <h3 id="range-title">Renda no período</h3>
+            <div id="sales-bars" class="sales-bars"></div>
+        </div>
+
+        <div class="sales-section">
+            <h3>Renda por Produto</h3>
+            <div id="by-product" class="sales-table-wrap"></div>
+        </div>
+
+        <div class="sales-section">
+            <h3>Renda por Viagem</h3>
+            <div id="by-trip" class="sales-table-wrap"></div>
+        </div>
+
+        <div class="sales-section">
+            <h3>Histórico de Vendas</h3>
+            <div id="entries" class="sales-table-wrap"></div>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const auth = window.natripAuth;
+    const current = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+    const msg = document.getElementById('admin-msg');
+
+    const periodSelect = document.getElementById('period-select');
+    const dateInput = document.getElementById('date-input');
+    const refreshBtn = document.getElementById('refresh-btn');
+
+    const kpisEl = document.getElementById('sales-kpis');
+    const barsEl = document.getElementById('sales-bars');
+    const byProductEl = document.getElementById('by-product');
+    const byTripEl = document.getElementById('by-trip');
+    const entriesEl = document.getElementById('entries');
+    const rangeTitle = document.getElementById('range-title');
+
+    if (!current) { msg.textContent = 'Acesso restrito: faça login como administrador.'; return; }
+
+    function getUsers() {
+        try { return JSON.parse(localStorage.getItem('natrip_users') || '[]'); } catch (e) { return []; }
+    }
+
+    async function checkAdmin() {
+        try {
+            const resp = await fetch('/api/users');
+            if (!resp.ok) {
+                const usersLocal = getUsers();
+                const fullLocal = usersLocal.find(u => u.email === current.email);
+                if (!fullLocal || fullLocal.role !== 'admin') { msg.textContent = 'Acesso negado. Somente administradores.'; return false; }
+                return true;
+            }
+            const users = await resp.json();
+            const full = users.find(u => u.email === current.email);
+            if (!full || full.role !== 'admin') { msg.textContent = 'Acesso negado. Somente administradores.'; return false; }
+            return true;
+        } catch (e) {
+            const usersLocal = getUsers();
+            const fullLocal = usersLocal.find(u => u.email === current.email);
+            if (!fullLocal || fullLocal.role !== 'admin') { msg.textContent = 'Acesso negado. Somente administradores.'; return false; }
+            return true;
+        }
+    }
+
+    function fmtBRL(v) {
+        return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function fmtDateTime(value) {
+        const d = new Date(value || '');
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleString('pt-BR');
+    }
+
+    function escapeHtml(val) {
+        return String(val || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function renderKPIs(summary) {
+        if (!kpisEl) return;
+        const s = summary || {};
+        kpisEl.innerHTML = `
+            <div class="sales-kpi-card">
+                <div class="sales-kpi-title">Renda total</div>
+                <div class="sales-kpi-value">${fmtBRL(s.totalRevenue || 0)}</div>
+            </div>
+            <div class="sales-kpi-card">
+                <div class="sales-kpi-title">Pedidos pagos</div>
+                <div class="sales-kpi-value">${Number(s.totalOrders || 0)}</div>
+            </div>
+            <div class="sales-kpi-card">
+                <div class="sales-kpi-title">Quantidade total</div>
+                <div class="sales-kpi-value">${Number(s.totalItems || 0)}</div>
+            </div>
+            <div class="sales-kpi-card">
+                <div class="sales-kpi-title">Produtos vendidos</div>
+                <div class="sales-kpi-value">${Number(s.totalProducts || 0)}</div>
+            </div>
+            <div class="sales-kpi-card">
+                <div class="sales-kpi-title">Assentos em viagens</div>
+                <div class="sales-kpi-value">${Number(s.totalTrips || 0)}</div>
+            </div>
+        `;
+    }
+
+    function renderBars(buckets) {
+        if (!barsEl) return;
+        const rows = Array.isArray(buckets) ? buckets : [];
+        if (!rows.length) {
+            barsEl.innerHTML = '<p class="sales-muted">Sem vendas no período selecionado.</p>';
+            return;
+        }
+
+        const max = rows.reduce((top, row) => Math.max(top, Number(row.revenue || 0)), 0) || 1;
+        barsEl.innerHTML = rows.map(row => {
+            const revenue = Number(row.revenue || 0);
+            const width = Math.max(0, Math.min(100, (revenue / max) * 100));
+            return `
+                <div class="sales-bar-row">
+                    <div class="sales-muted">${escapeHtml(row.label || '-')}</div>
+                    <div class="sales-bar-track"><div class="sales-bar-fill" style="width:${width.toFixed(2)}%;"></div></div>
+                    <div style="text-align:right;font-weight:600;">${fmtBRL(revenue)}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderGroupTable(container, list, emptyText) {
+        if (!container) return;
+        const rows = Array.isArray(list) ? list : [];
+        if (!rows.length) {
+            container.innerHTML = `<p class="sales-muted">${escapeHtml(emptyText)}</p>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <table class="sales-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Quantidade</th>
+                        <th>Pedidos</th>
+                        <th>Renda</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(row => `
+                        <tr>
+                            <td>${escapeHtml(row.name || '-')}</td>
+                            <td>${Number(row.qty || 0)}</td>
+                            <td>${Number(row.orders || 0)}</td>
+                            <td>${fmtBRL(row.revenue || 0)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    function renderEntries(entries, period) {
+        if (!entriesEl) return;
+        const rows = Array.isArray(entries) ? entries : [];
+        if (!rows.length) {
+            entriesEl.innerHTML = '<p class="sales-muted">Sem vendas para exibir.</p>';
+            return;
+        }
+
+        if (period === 'monthly') {
+            const grouped = new Map();
+            rows.forEach(row => {
+                const d = new Date(row.occurredAt || '');
+                if (isNaN(d.getTime())) return;
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const label = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                if (!grouped.has(key)) {
+                    grouped.set(key, { label, revenue: 0, qty: 0, orders: new Set() });
+                }
+                const item = grouped.get(key);
+                item.revenue += Number(row.revenue || 0);
+                item.qty += Number(row.qty || 0);
+                if (row.orderToken) item.orders.add(String(row.orderToken));
+            });
+
+            const months = Array.from(grouped.entries())
+                .sort((a, b) => b[0].localeCompare(a[0]))
+                .map(([, value]) => ({
+                    label: value.label,
+                    revenue: value.revenue,
+                    qty: value.qty,
+                    orders: value.orders.size
+                }));
+
+            entriesEl.innerHTML = `
+                <table class="sales-table">
+                    <thead>
+                        <tr>
+                            <th>Mês</th>
+                            <th>Pedidos</th>
+                            <th>Quantidade</th>
+                            <th>Renda Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${months.map(month => `
+                            <tr>
+                                <td>${escapeHtml(month.label)}</td>
+                                <td>${Number(month.orders || 0)}</td>
+                                <td>${Number(month.qty || 0)}</td>
+                                <td>${fmtBRL(month.revenue || 0)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            return;
+        }
+
+        entriesEl.innerHTML = `
+            <table class="sales-table">
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Tipo</th>
+                        <th>Item</th>
+                        <th>Qtd</th>
+                        <th>Unitário</th>
+                        <th>Total</th>
+                        <th>Cliente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(row => `
+                        <tr>
+                            <td>${fmtDateTime(row.occurredAt)}</td>
+                            <td>${row.type === 'viagem' ? 'Viagem' : 'Produto'}</td>
+                            <td>${escapeHtml(row.name || '-')}</td>
+                            <td>${Number(row.qty || 0)}</td>
+                            <td>${fmtBRL(row.unitPrice || 0)}</td>
+                            <td>${fmtBRL(row.revenue || 0)}</td>
+                            <td>${escapeHtml(row.buyerName || '-')}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async function loadDashboard() {
+        const period = (periodSelect?.value || 'monthly').toLowerCase();
+        const date = (dateInput?.value || '').trim();
+        if (!date) {
+            msg.style.color = '#c33';
+            msg.textContent = 'Selecione uma data de referência.';
+            return;
+        }
+
+        msg.style.color = '#666';
+        msg.textContent = 'Carregando dashboard...';
+
+        try {
+            const query = new URLSearchParams({ period, date }).toString();
+            const resp = await fetch(`/api/payments/dashboard?${query}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data?.error || 'Falha ao carregar dashboard');
+
+            const start = data?.range?.start || date;
+            const end = data?.range?.end || date;
+            const title = period === 'weekly'
+                ? `Renda semanal (${start} até ${end})`
+                : `Renda por mês (${start} até ${end})`;
+            if (rangeTitle) rangeTitle.textContent = title;
+
+            renderKPIs(data.summary || {});
+            renderBars(data.buckets || []);
+            renderGroupTable(byProductEl, data.byProduct || [], 'Nenhum produto vendido no período.');
+            renderGroupTable(byTripEl, data.byTrip || [], 'Nenhuma viagem vendida no período.');
+            renderEntries(data.entries || [], period);
+
+            msg.style.color = '#0a7';
+            msg.textContent = 'Dashboard atualizado.';
+        } catch (e) {
+            msg.style.color = '#c33';
+            msg.textContent = e && e.message ? e.message : 'Erro ao carregar dashboard.';
+        }
+    }
+
+    function setDefaultDate() {
+        if (!dateInput) return;
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+    }
+
+    async function init() {
+        const ok = await checkAdmin();
+        if (!ok) return;
+
+        setDefaultDate();
+        await loadDashboard();
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', loadDashboard);
+        }
+        if (periodSelect) {
+            periodSelect.addEventListener('change', loadDashboard);
+        }
+        if (dateInput) {
+            dateInput.addEventListener('change', loadDashboard);
+        }
+    }
+
+    init();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "natrip-backend",
+  "version": "0.1.2",
+  "private": true,
+  "main": "server.js",
+  "engines": {
+    "node": ">=18",
+    "npm": ">=9"
+  },
+  "packageManager": "npm@9.8.1",
+  "scripts": {
+    "start": "node server_hybrid.js",
+    "start:godaddy": "node server_hybrid.js",
+    "start:postgres": "node server.js",
+    "start:mysql": "node server_mysql.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2",
+    "mysql2": "^3.15.3",
+    "node-fetch": "^2.6.7",
+    "pg": "^8.18.0",
+    "sqlite3": "^5.1.7"
+  }
+}

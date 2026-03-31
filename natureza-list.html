@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Natureza e Trilhas — Lista | Natrip Aventura</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- header injected by js/main.js -->
+
+<section style="max-width:1000px;margin:24px auto;padding:0 16px;">
+  <h2 style="font-size:1.6rem; color:#333;">Natureza e Trilhas</h2>
+  <p style="color:#666;margin-top:8px;">Roteiros de natureza, cachoeiras e trilhas.</p>
+</section>
+
+<section style="max-width:1000px;margin:8px auto;padding:0 16px;">
+  <h3 style="color:#333;margin-bottom:12px;">Viagens de Natureza e Trilhas</h3>
+  <div id="category-trips" class="cities-grid" style="max-width:1000px;margin:0 auto;padding:0 0;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:18px;"></div>
+</section>
+
+<footer>
+  <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', ()=>{
+  const container = document.getElementById('category-trips');
+  if (!container) return;
+  const renderCategoryTrips = async ()=>{
+    try {
+      const r = await fetch('/api/trips'); if (!r.ok) return; const all = await r.json();
+      const trips = (all||[]).filter(t=>t.category==='trilhas-e-cachoeiras');
+      console.log('natureza-list: fetched trips count', (all||[]).length, 'filtered', trips.length);
+      console.log('natureza-list sample', (trips||[]).map(t=>({id:t.id,city:t.city,cover:!!t.coverImage,category:t.category})));
+      if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
+      function slug(name){ return (name||'').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+      function escUrl(u){ return (u||'').toString().replace(/'/g, "\\'"); }
+      container.innerHTML = '';
+      trips.forEach(t=>{
+        const s = slug(t.city||'');
+        const href = `cidade.html?nome=${encodeURIComponent(t.city||'')}&date=${encodeURIComponent(t.date||'')}`;
+        const rawCover = t.coverImage || '';
+        const finalCover = rawCover ? (new RegExp('^(data:|https?:|/)','i').test(rawCover) ? rawCover : ('/' + rawCover)) : '';
+        const a = document.createElement('a');
+        a.className = 'cidade-card cidade-card-' + s;
+        a.href = href;
+        a.style.height = '200px';
+        if (finalCover) a.style.backgroundImage = `url('${finalCover.replace(/'/g, "\\'")}')`;
+        const ov = document.createElement('div'); ov.className='overlay'; a.appendChild(ov);
+        const inner = document.createElement('div');
+        const h = document.createElement('h3'); h.textContent = t.city||'Destino';
+        const p = document.createElement('p'); p.textContent = t.city || '';
+        inner.appendChild(h); inner.appendChild(p);
+        if (t.description) { const pd = document.createElement('p'); pd.style.marginTop='8px'; pd.style.color='#fff'; pd.textContent = t.description; inner.appendChild(pd); }
+        a.appendChild(inner);
+        container.appendChild(a);
+      });
+    } catch(e) { console.error('Error rendering natureza-list', e); }
+  };
+  renderCategoryTrips();
+  window.addEventListener('storage', (e)=>{ if (e.key === 'natrip_admin_trips_updated_at') renderCategoryTrips(); });
+});
+</script>
+</body>
+</html>

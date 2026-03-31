@@ -1,0 +1,27 @@
+<!-- Header estático do site (também é injetado dinamicamente pelo `js/main.js`).
+     Contém:
+     - logo-area: nome do site e bandeira animada
+     - menu: links de navegação
+     - header-content: título principal e slogan (os elementos têm ids usados para animação no JS: `logo` e `slogan`)
+-->
+<header>
+    <div class="header-top">
+        <div class="logo-area">
+            <div class="logo-top">Natrip</div>
+            <div class="flag"></div>
+        </div>
+
+        <nav class="menu">
+            <a href="index.html">Início</a>
+            <a href="/sobre.html">Sobre</a>
+            <a href="/contato.html">Contato</a>
+            <!-- 'perfil-link' era usado na versão estática; a versão injetada por JS usa um botão com dropdown -->
+            <a href="perfil.html" class="perfil-link">👤 Perfil</a>
+        </nav>
+    </div>
+
+    <div class="header-content">
+        <h1 id="logo">Natrip Aventura</h1>
+        <p id="slogan">Viagens inesquecíveis por Minas Gerais</p>
+    </div>
+</header>

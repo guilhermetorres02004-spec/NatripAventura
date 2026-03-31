@@ -1,0 +1,64 @@
+<!-- Página principal: mostra os cards principais de destino e o footer. -->
+<!-- Estrutura:
+    - <head>: metadados, fonte e CSS
+    - <body>: seção com os cartões de destino (links), e footer
+    - o header é injetado dinamicamente por `js/main.js` no início do <body>
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Natrip Aventura | Turismo em Minas Gerais</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Área principal com cartões de destino. Cada cartão é um link para uma seção do site. -->
+<section class="destinos-layout">
+    <!-- Cartão 1: leva à lista de cidades históricas (arquivo: cidades historicas/cidades-historicas.html) -->
+    <a href="cidades-historicas/cidades-historicas.html" class="destino-card card-1">
+        <div class="overlay"></div>
+        <h2>CIDADES<br>HISTÓRICAS</h2>
+    </a>
+
+    <!-- Cartão 2: placeholder para roteiros de natureza e trilhas (atualmente aponta para '#') -->
+    <a href="natureza-list.html" class="destino-card card-2">
+        <div class="overlay"></div>
+        <h2>NATUREZA<br>E TRILHAS</h2>
+    </a>
+
+    <!-- Cartão 3: placeholder para bate-volta de carro -->
+    <a href="bate-volta-list.html" class="destino-card card-3">
+        <div class="overlay"></div>
+        <h2>BATE-VOLTA<br>DE CARRO</h2>
+    </a>
+</section>
+
+    <div class="scroll-anchor">
+        <a href="#abaixo-viagens-proximas" class="scroll-down" aria-label="Ir para viagens próximas">
+            <span class="chevron"></span>
+        </a>
+    </div>
+
+    <section id="viagens-proximas" class="viagens-proximas">
+        <div class="container">
+            <h2>Proximas viajens</h2>
+            <div class="proximas-list">
+                <!-- itens de viagem serão adicionados aqui -->
+            </div>
+        </div>
+    </section>
+
+    <div id="abaixo-viagens-proximas" class="abaixo-viagens-proximas" tabindex="-1"></div>
+
+<footer>
+    <p>📍 Saídas de Belo Horizonte - MG</p>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>

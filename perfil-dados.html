@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Dados da Conta | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+    @media (max-width: 640px) {
+        .perfil-container {
+            max-width: 100vw;
+            padding: 0 4px;
+        }
+        .perfil-card {
+            border-radius: 10px;
+            padding: 8px;
+            font-size: 1rem;
+        }
+        .perfil-card h2 {
+            font-size: 1.1rem;
+        }
+        .perfil-card input,
+        .perfil-card select {
+            font-size: 0.95rem;
+            padding: 8px;
+        }
+    }
+    </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const auth = window.natripAuth;
+        const user = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        const form = document.getElementById('account-form');
+        const msg = document.getElementById('pd-msg');
+
+        if (!user) {
+            form.innerHTML = '<p>Você não está logado. <a href="perfil.html">Entrar / Criar conta</a></p>';
+            return;
+        }
+
+        const inputs = {
+            name: document.getElementById('pd-name'),
+            cpf: document.getElementById('pd-cpf'),
+            phone: document.getElementById('pd-phone'),
+            email: document.getElementById('pd-email'),
+            password: document.getElementById('pd-password')
+        };
+
+        function populate(u) {
+            inputs.name.value = u.name || '';
+            inputs.cpf.value = u.cpf || '';
+            inputs.phone.value = u.phone || '';
+            inputs.email.value = u.email || '';
+            inputs.password.value = '';
+        }
+
+        populate(user);
+
+        const btnEdit = document.getElementById('pd-edit');
+        const btnSave = document.getElementById('pd-save');
+        const btnCancel = document.getElementById('pd-cancel');
+
+        function setEditable(edit) {
+            inputs.name.disabled = !edit;
+            inputs.cpf.disabled = !edit;
+            inputs.phone.disabled = !edit;
+            // keep email readonly to use as key
+            inputs.email.disabled = true;
+            inputs.password.disabled = !edit;
+            btnEdit.style.display = edit ? 'none' : '';
+            btnSave.style.display = edit ? '' : 'none';
+            btnCancel.style.display = edit ? '' : 'none';
+            msg.textContent = '';
+        }
+
+        let original = { ...user };
+
+        btnEdit.addEventListener('click', () => {
+            setEditable(true);
+        });
+
+        btnCancel.addEventListener('click', () => {
+            populate(original);
+            setEditable(false);
+        });
+
+        btnSave.addEventListener('click', () => {
+            const name = inputs.name.value.trim();
+            const cpf = inputs.cpf.value.trim().replace(/\D/g, '');
+            const phone = inputs.phone.value.trim().replace(/\D/g, '');
+            const password = inputs.password.value;
+
+            if (cpf.length !== 11) {
+                msg.textContent = 'CPF inválido. Informe 11 dígitos.';
+                msg.style.color = '#c33';
+                return;
+            }
+            if (phone.length < 10 || phone.length > 11) {
+                msg.textContent = 'Telefone inválido. Informe 10 ou 11 dígitos.';
+                msg.style.color = '#c33';
+                return;
+            }
+
+            // update users array
+            const users = auth ? auth.getUsers() : JSON.parse(localStorage.getItem('natrip_users') || '[]');
+            const uidx = users.findIndex(u => u.email === user.email);
+            if (uidx === -1) {
+                msg.textContent = 'Conta não encontrada.';
+                msg.style.color = '#c33';
+                return;
+            }
+
+            users[uidx].name = name;
+            users[uidx].cpf = cpf;
+            users[uidx].phone = phone;
+            if (password) users[uidx].password = password; // update only if provided
+
+            if (auth) {
+                auth.saveUsers(users);
+                auth.setCurrentUser({ name, email: user.email, cpf, phone });
+                if (auth.updateHeaderAuth) auth.updateHeaderAuth();
+            } else {
+                localStorage.setItem('natrip_users', JSON.stringify(users));
+                localStorage.setItem('natrip_currentUser', JSON.stringify({ name, email: user.email, cpf, phone }));
+            }
+
+            original = { name, email: user.email, cpf, phone };
+            setEditable(false);
+            msg.textContent = 'Dados atualizados com sucesso.';
+            msg.style.color = '#0a7';
+        });
+
+        setEditable(false);
+    });
+    
+    // Carregar contagem de convidados
+    async function loadReferralCount() {
+        const auth = window.natripAuth;
+        const user = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
+        
+        if (!user || !user.email) return;
+        
+        try {
+            const response = await fetch(`http://localhost:3000/api/referrals?email=${encodeURIComponent(user.email)}`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                document.getElementById('referral-count').textContent = data.count || 0;
+                
+                // Armazenar dados para uso posterior
+                window.referralData = data;
+                
+                // Atualizar botão
+                const btn = document.getElementById('view-referrals-btn');
+                if (data.count === 0) {
+                    btn.style.display = 'none';
+                } else {
+                    btn.style.display = 'flex';
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar convidados:', error);
+        }
+    }
+    
+    // Carregar quando a página carregar
+    loadReferralCount();
+    </script>
+    <script>
+    function toggleReferralHistory() {
+        const history = document.getElementById('referral-history');
+        const list = document.getElementById('referral-list');
+        
+        if (history.style.display === 'none') {
+            // Mostrar histórico
+            history.style.display = 'block';
+            
+            // Preencher lista
+            if (window.referralData && window.referralData.referrals) {
+                if (window.referralData.referrals.length === 0) {
+                    list.innerHTML = '<p style="color: #999; text-align: center;">Nenhum convidado ainda.</p>';
+                } else {
+                    list.innerHTML = window.referralData.referrals.map((ref, index) => `
+                        <div style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 30px; height: 30px; background: #0a7; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                                ${index + 1}
+                            </div>
+                            <div>
+                                <p style="margin: 0; font-weight: 600; color: #333;">${ref.name}</p>
+                                <p style="margin: 3px 0 0 0; font-size: 12px; color: #999;">${ref.email}</p>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+        } else {
+            // Esconder histórico
+            history.style.display = 'none';
+        }
+    }
+    </script>
+    <style>
+        .profile-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        .tab-btn {
+            padding: 12px 24px;
+            background: #fff;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .tab-btn:hover {
+            border-color: #0a7;
+            color: #0a7;
+        }
+        .tab-btn.active {
+            background: #0a7;
+            color: #fff;
+            border-color: #0a7;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+
+<body>
+
+<section class="perfil-container">
+    <div class="perfil-card">
+        <!-- Aba Dados da Conta -->
+        <div id="tab-dados" class="tab-content active">
+            <h2>Dados da Conta</h2>
+            <!-- Formulário de edição de dados do usuário.
+                 - Os inputs aparecem desativados inicialmente e são habilitados ao clicar em 'Editar'.
+                 - O e-mail é mantido como chave (não editável) para localizar o registro no localStorage.
+            -->
+            <form id="account-form">
+                <input id="pd-name" type="text" placeholder="Nome completo" disabled required>
+                <input id="pd-cpf" type="text" placeholder="CPF" disabled required>
+                <input id="pd-phone" type="tel" placeholder="Telefone" disabled required>
+                <input id="pd-email" type="email" placeholder="E-mail" disabled required>
+                <input id="pd-password" type="password" placeholder="Senha (deixe em branco para manter)" disabled>
+
+                <div style="display:flex;gap:10px;margin-top:12px;">
+                    <button type="button" id="pd-edit">Editar</button>
+                    <button type="button" id="pd-save" style="display:none;">Salvar</button>
+                    <button type="button" id="pd-cancel" style="display:none;">Cancelar</button>
+                </div>
+
+                <p class="form-msg" id="pd-msg"></p>
+            </form>
+            
+            <!-- Seção de Convidados -->
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                <h3 style="margin-bottom: 15px; color: #333;">Programa de Indicações</h3>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <p style="margin: 0; font-size: 14px; color: #666;">Total de Convidados</p>
+                        <p id="referral-count" style="margin: 5px 0 0 0; font-size: 32px; font-weight: 700; color: #0a7;">0</p>
+                    </div>
+                    <button 
+                        id="view-referrals-btn" 
+                        type="button" 
+                        onclick="toggleReferralHistory()"
+                        style="padding: 10px 20px; background: #0a7; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px;"
+                    >
+                        👥 Ver Histórico
+                    </button>
+                </div>
+                
+                <!-- Histórico expansível -->
+                <div id="referral-history" style="display: none; margin-top: 15px; background: white; border: 2px solid #0a7; border-radius: 8px; padding: 20px;">
+                    <h4 style="margin: 0 0 15px 0; color: #333;">Pessoas que você convidou:</h4>
+                    <div id="referral-list" style="max-height: 300px; overflow-y: auto;">
+                        <!-- Lista será preenchida dinamicamente -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    // Removido código das abas de convite
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+
+</body>
+</html>

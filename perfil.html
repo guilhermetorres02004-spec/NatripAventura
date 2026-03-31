@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Perfil | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+    @media (max-width: 640px) {
+        .perfil-container {
+            max-width: 100vw;
+            padding: 0 4px;
+        }
+        .perfil-card {
+            border-radius: 10px;
+            padding: 8px;
+            font-size: 1rem;
+        }
+        .perfil-card h2 {
+            font-size: 1.1rem;
+        }
+        .perfil-card input,
+        .perfil-card select {
+            font-size: 0.95rem;
+            padding: 8px;
+        }
+    }
+    </style>
+</head>
+<body>
+
+<!-- Área de perfil com dois cartões: Login (entrar) e Criar Conta (cadastro).
+     - Cada form tem um id usado por `js/main.js` para processar autenticação local (localStorage).
+     - Mensagens de feedback são exibidas em elementos com classes/id `form-msg`.
+-->
+<section class="perfil-container">
+    <div class="perfil-card">
+        <h2>Login</h2>
+        <!-- Formulário de login: ids principais -> login-email, login-password, login-form -->
+        <form id="login-form" autocomplete="off">
+            <input id="login-email" type="email" placeholder="E-mail" required autocomplete="off" autocapitalize="off" spellcheck="false">
+            <input id="login-password" type="password" placeholder="Senha" required autocomplete="new-password">
+            <button type="submit">Entrar</button>
+            <p class="form-msg" id="login-msg"></p>
+        </form>
+    </div>
+
+    <div class="perfil-card">
+        <h2>Criar Conta</h2>
+        <!-- Formulário de cadastro: inclui CPF e Telefone; ids usados por JS: signup-name, signup-cpf, signup-phone, signup-email, signup-password -->
+        <form id="signup-form" autocomplete="off">
+            <input id="signup-name" type="text" placeholder="Nome completo" required autocomplete="off">
+            <input id="signup-cpf" type="text" placeholder="CPF" required autocomplete="off" inputmode="numeric">
+            <input id="signup-phone" type="tel" placeholder="Telefone" required autocomplete="off" inputmode="tel">
+            <input id="signup-email" type="email" placeholder="E-mail" required autocomplete="off" autocapitalize="off" spellcheck="false">
+            <input id="signup-password" type="password" placeholder="Senha" required autocomplete="new-password">
+            
+            <select id="signup-source" required style="width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: 'Poppins', sans-serif; color: #666;">
+                <option value="">Como conheceu nosso site?</option>
+                <option value="Amigo">Amigo</option>
+                <option value="Instagram">Instagram</option>
+                <option value="Facebook">Facebook</option>
+                <option value="Outros">Outros...</option>
+            </select>
+            
+            <input 
+                id="signup-referral-link" 
+                type="text" 
+                placeholder="Digite o código de convite (ex: EFKGWDEY)" 
+                style="display: none; width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-transform: uppercase;"
+            >
+            
+            <input 
+                id="signup-source-other" 
+                type="text" 
+                placeholder="Por favor, especifique" 
+                style="display: none; width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
+            >
+            
+            <button type="submit">Criar Conta</button>
+            <p class="form-msg" id="signup-msg"></p>
+        </form>
+    </div>
+</section>
+
+<script>
+    // Mostrar campos apropriados quando a fonte é alterada
+    document.getElementById('signup-source').addEventListener('change', function() {
+        const otherField = document.getElementById('signup-source-other');
+        const referralField = document.getElementById('signup-referral-link');
+        
+        // Esconde todos os campos extras
+        otherField.style.display = 'none';
+        otherField.required = false;
+        otherField.value = '';
+        
+        referralField.style.display = 'none';
+        referralField.required = false;
+        referralField.value = '';
+        
+        // Mostra o campo apropriado
+        if (this.value === 'Outros') {
+            otherField.style.display = 'block';
+            otherField.required = true;
+        } else if (this.value === 'Amigo') {
+            referralField.style.display = 'block';
+            referralField.required = false; // opcional
+        }
+    });
+    
+    function clearLoginFields() {
+        const loginEmail = document.getElementById('login-email');
+        const loginPassword = document.getElementById('login-password');
+        if (loginEmail) loginEmail.value = '';
+        if (loginPassword) loginPassword.value = '';
+    }
+
+    function clearSignupFields() {
+        const signupName = document.getElementById('signup-name');
+        const signupCpf = document.getElementById('signup-cpf');
+        const signupPhone = document.getElementById('signup-phone');
+        const signupEmail = document.getElementById('signup-email');
+        const signupPassword = document.getElementById('signup-password');
+        const signupSource = document.getElementById('signup-source');
+        const signupSourceOther = document.getElementById('signup-source-other');
+        const signupReferral = document.getElementById('signup-referral-link');
+
+        if (signupName) signupName.value = '';
+        if (signupCpf) signupCpf.value = '';
+        if (signupPhone) signupPhone.value = '';
+        if (signupEmail) signupEmail.value = '';
+        if (signupPassword) signupPassword.value = '';
+        if (signupSource) signupSource.value = '';
+
+        if (signupSourceOther) {
+            signupSourceOther.value = '';
+            signupSourceOther.style.display = 'none';
+            signupSourceOther.required = false;
+        }
+
+        if (signupReferral) {
+            signupReferral.value = '';
+            signupReferral.style.display = 'none';
+            signupReferral.required = false;
+        }
+    }
+
+    // Preencher automaticamente se houver ?ref= na URL
+    window.addEventListener('DOMContentLoaded', function() {
+        clearLoginFields();
+        clearSignupFields();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const refCode = urlParams.get('ref');
+        
+        if (refCode) {
+            const sourceSelect = document.getElementById('signup-source');
+            const referralField = document.getElementById('signup-referral-link');
+            
+            if (sourceSelect && referralField) {
+                // Seleciona "Amigo"
+                sourceSelect.value = 'Amigo';
+                
+                // Mostra o campo de referência
+                referralField.style.display = 'block';
+                
+                // Preenche apenas com o código
+                referralField.value = refCode.toUpperCase();
+                
+                // Scroll suave até o formulário de cadastro
+                const signupCard = document.querySelector('#signup-form').closest('.perfil-card');
+                if (signupCard) {
+                    signupCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+    });
+
+    // Em retorno de navegação (back/forward cache), garante que login/senha também fiquem vazios.
+    window.addEventListener('pageshow', function() {
+        clearLoginFields();
+        clearSignupFields();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const refCode = urlParams.get('ref');
+        if (refCode) {
+            const sourceSelect = document.getElementById('signup-source');
+            const referralField = document.getElementById('signup-referral-link');
+            if (sourceSelect && referralField) {
+                sourceSelect.value = 'Amigo';
+                referralField.style.display = 'block';
+                referralField.value = refCode.toUpperCase();
+            }
+        }
+    });
+</script>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+</body>
+</html>
