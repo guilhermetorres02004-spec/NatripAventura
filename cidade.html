@@ -256,8 +256,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cur) {
             bookingNote.textContent = `Reservando como: ${cur.name} (${cur.email})`;
             if (bookingBtn) bookingBtn.disabled = false;
-            if (bookingNameInput && !bookingNameInput.value) bookingNameInput.value = cur.name || '';
-            if (bookingCpfInput && !bookingCpfInput.value && cur.cpf) bookingCpfInput.value = cur.cpf;
         } else {
             bookingNote.innerHTML = 'Você não está logado. <a href="perfil.html">Faça login</a> para agendar com seus dados.';
             if (bookingBtn) bookingBtn.disabled = true;
