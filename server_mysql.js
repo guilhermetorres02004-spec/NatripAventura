@@ -14,7 +14,6 @@ const app = express();
 if (process.env.TRUST_PROXY !== '0') {
   app.set('trust proxy', 1);
 }
-
 // CORS configuration - allow all origins in development, configure for production
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 

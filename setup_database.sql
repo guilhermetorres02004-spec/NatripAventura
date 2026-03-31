@@ -2,14 +2,17 @@
 -- Execute este script antes de iniciar o servidor
 
 -- Criar o banco de dados
+CREATE DATABASE IF NOT EXISTS natrip CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- Usar o banco de dados
+USE natrip;
 
 -- As tabelas serão criadas automaticamente pelo servidor Node.js
 -- Este arquivo é apenas para criar o banco de dados inicial
 
 -- Se você quiser criar as tabelas manualmente, descomente o código abaixo:
 
-
+/*
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255),
@@ -55,4 +58,4 @@ CREATE TABLE IF NOT EXISTS banners (
   createdAt VARCHAR(50),
   INDEX idx_order (orderIndex)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
+*/

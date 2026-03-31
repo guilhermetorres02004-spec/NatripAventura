@@ -20,7 +20,6 @@ app.use((req, res, next) => {
   );
   next();
 });
-
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
