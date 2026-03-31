@@ -90,12 +90,14 @@
                     <!-- Exibe nome do usuário logado ou um link para efetuar login -->
                     <p id="booking-user-note" style="color:#666;font-size:0.95rem;margin-bottom:8px;"></p>
                     <p id="availability-note" style="color:#666;font-size:0.95rem;margin:6px 0 10px;"></p>
+                    <input id="booking-name" type="text" placeholder="Nome completo">
+                    <input id="booking-cpf" type="text" placeholder="CPF" inputmode="numeric" pattern="[0-9]*" maxlength="14">
                     <input id="booking-date" type="date">
                     <div id="reserved-dates" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;"></div>
-                    <!-- Campo de quantidade simples (input numérico) -->
-                    <input id="booking-seats" type="number" min="1" value="1" placeholder="Quantidade de pessoas">
+                    <!-- Seletor de vagas limitado a 4 -->
+                    <select id="booking-seats"></select>
                     <textarea id="booking-notes" rows="3" placeholder="Observações (opcional)"></textarea>
-                    <button id="booking-submit" class="btn-agendar">Agendar</button>
+                    <button id="booking-submit" class="btn-agendar">Finalizar agendamento (PIX)</button>
                     <p class="form-msg" id="booking-msg"></p>
                 </div>
             </div>
@@ -118,6 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const points = document.getElementById('city-points');
     const bookingMsg = document.getElementById('booking-msg');
     const bookingNote = document.getElementById('booking-user-note');
+    const bookingNameInput = document.getElementById('booking-name');
+    const bookingCpfInput = document.getElementById('booking-cpf');
 
     if (!nome) {
         title.textContent = 'Cidade não especificada';
@@ -244,15 +248,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const auth = window.natripAuth;
     const bookingBtn = document.getElementById('booking-submit');
+    const seatsSelect = document.getElementById('booking-seats');
+    const availabilityNote = document.getElementById('availability-note');
 
     function refreshAuthState() {
         const cur = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
         if (cur) {
             bookingNote.textContent = `Reservando como: ${cur.name} (${cur.email})`;
             if (bookingBtn) bookingBtn.disabled = false;
+            if (bookingNameInput && !bookingNameInput.value) bookingNameInput.value = cur.name || '';
+            if (bookingCpfInput && !bookingCpfInput.value && cur.cpf) bookingCpfInput.value = cur.cpf;
         } else {
             bookingNote.innerHTML = 'Você não está logado. <a href="perfil.html">Faça login</a> para agendar com seus dados.';
             if (bookingBtn) bookingBtn.disabled = true;
+            if (bookingNameInput) bookingNameInput.value = '';
+            if (bookingCpfInput) bookingCpfInput.value = '';
         }
     }
 
@@ -261,11 +271,25 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('storage', (e) => { if (e.key === 'natrip_currentUser') refreshAuthState(); });
 
 
-    // Remove limite de pessoas: não há mais controle de disponibilidade
-    // Remove também o campo max do input de pessoas
-    const seatsInput = document.getElementById('booking-seats');
-    const availabilityNote = document.getElementById('availability-note');
-    if (seatsInput) seatsInput.removeAttribute('max');
+    function setSeatOptions(available) {
+        if (!seatsSelect) return;
+        const maxAllowed = Math.min(available > 0 ? available : 4, 4);
+        seatsSelect.innerHTML = '';
+        if (!available || available <= 0) {
+            seatsSelect.innerHTML = '<option value="">Sem vagas</option>';
+            seatsSelect.disabled = true;
+            return;
+        }
+        for (let i = 1; i <= maxAllowed; i++) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `${i} vaga${i>1?'s':''}`;
+            seatsSelect.appendChild(opt);
+        }
+        seatsSelect.disabled = false;
+    }
+
+    setSeatOptions(4);
 
     // Helpers to manage per-city bookings (limit 4 seats per date)
     const storageKey = `natrip_bookings_${nome.replace(/\s+/g, '_')}`;
@@ -278,25 +302,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return list.reduce((s, b) => s + (parseInt(b.seats, 10) || 0), 0);
     }
     function updateAvailability(date) {
-        if (!seatsInput) return;
+        if (!seatsSelect) return;
         if (!date) {
             availabilityNote.textContent = 'Escolha uma data para ver disponibilidade.';
-            seatsInput.max = 4;
-            seatsInput.disabled = false;
+            setSeatOptions(4);
+            seatsSelect.disabled = false;
             return;
         }
-        // Somar assentos já reservados para a mesma data
         const bookings = getCityBookings();
         const occupied = bookings.filter(b => b.date === date).reduce((s,b) => s + (parseInt(b.seats,10)||0), 0);
         const available = Math.max(0, 4 - occupied);
         availabilityNote.textContent = available > 0 ? `Vagas restantes para ${date}: ${available}` : `Sem vagas para ${date}.`;
-        seatsInput.max = available > 0 ? available : 0;
-        if (available === 0) {
-            seatsInput.value = 0;
-            seatsInput.disabled = true;
-        } else {
-            seatsInput.disabled = false;
-            if ((parseInt(seatsInput.value,10) || 0) > available) seatsInput.value = available;
+        setSeatOptions(available);
+        if (available > 0) {
+            const currentVal = parseInt(seatsSelect.value, 10) || 1;
+            if (currentVal > available) seatsSelect.value = String(Math.min(available, 4));
         }
     }
 
@@ -462,8 +482,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('booking-submit').addEventListener('click', async () => {
         const date = document.getElementById('booking-date').value;
-        const seats = parseInt(document.getElementById('booking-seats').value, 10) || 1;
+        const seats = seatsSelect ? (parseInt(seatsSelect.value, 10) || 0) : 0;
         const notes = document.getElementById('booking-notes').value.trim();
+        const name = bookingNameInput ? bookingNameInput.value.trim() : '';
+        const cpfRaw = bookingCpfInput ? bookingCpfInput.value : '';
+        const cpf = cpfRaw.replace(/\D/g, '');
 
         const currentUser = auth ? auth.getCurrentUser() : JSON.parse(localStorage.getItem('natrip_currentUser') || 'null');
         if (!currentUser) {
@@ -474,6 +497,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!date) {
             bookingMsg.textContent = 'Escolha uma data.';
+            bookingMsg.style.color = '#c33';
+            return;
+        }
+
+        if (!name) {
+            bookingMsg.textContent = 'Informe o nome da pessoa.';
+            bookingMsg.style.color = '#c33';
+            return;
+        }
+
+        if (cpf.length !== 11) {
+            bookingMsg.textContent = 'Informe um CPF válido (11 dígitos).';
             bookingMsg.style.color = '#c33';
             return;
         }
@@ -512,17 +547,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Salva agendamento em chave específica da cidade para evitar compartilhamento entre cidades
         const existing = JSON.parse(localStorage.getItem(storageKey) || '[]');
-        const booking = { city: nome, date, seats, notes, user: currentUser ? currentUser.email : null, created: new Date().toISOString(), unitPrice: unitPrice, totalValue: (parseFloat(unitPrice) * (parseInt(seats,10)||1)) };
+        const booking = { city: nome, date, seats, notes, name, cpf, user: currentUser ? currentUser.email : null, created: new Date().toISOString(), unitPrice: unitPrice, totalValue: (parseFloat(unitPrice) * (parseInt(seats,10)||1)) };
         existing.push(booking);
         localStorage.setItem(storageKey, JSON.stringify(existing));
 
         // prepare checkout item and redirect user to payment flow
-        const checkoutItem = { ...booking, totalValue: parseFloat(booking.totalValue) };
+        const checkoutItem = { ...booking, totalValue: parseFloat(booking.totalValue), paymentMethod: 'pix', source: 'agendamento' };
         localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
 
-        bookingMsg.textContent = 'Viagem agendada com sucesso! Redirecionando para pagamento...';
+        bookingMsg.textContent = 'Viagem agendada com sucesso! Redirecionando para pagamento PIX...';
         bookingMsg.style.color = '#0a7';
-        setTimeout(() => { window.location.href = 'minhas-compras.html'; }, 1200);
+        setTimeout(() => { window.location.href = 'pagamento.html'; }, 1200);
     });
 });
 
