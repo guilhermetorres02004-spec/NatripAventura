@@ -41,7 +41,15 @@
         <!-- Formulário de login: ids principais -> login-email, login-password, login-form -->
         <form id="login-form" autocomplete="off">
             <input id="login-email" type="email" placeholder="E-mail" required autocomplete="off" autocapitalize="off" spellcheck="false">
-            <input id="login-password" type="password" placeholder="Senha" required autocomplete="new-password">
+            <div class="password-field">
+                <input id="login-password" type="password" placeholder="Senha" required autocomplete="new-password">
+                <button type="button" class="password-toggle" id="login-password-toggle" aria-label="Mostrar senha" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M1.5 12s4.5-6 10.5-6 10.5 6 10.5 6-4.5 6-10.5 6S1.5 12 1.5 12Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </button>
+            </div>
             <button type="submit">Entrar</button>
             <p class="form-msg" id="login-msg"></p>
         </form>
@@ -55,7 +63,15 @@
             <input id="signup-cpf" type="text" placeholder="CPF" required autocomplete="off" inputmode="numeric">
             <input id="signup-phone" type="tel" placeholder="Telefone" required autocomplete="off" inputmode="tel">
             <input id="signup-email" type="email" placeholder="E-mail" required autocomplete="off" autocapitalize="off" spellcheck="false">
-            <input id="signup-password" type="password" placeholder="Senha" required autocomplete="new-password">
+            <div class="password-field">
+                <input id="signup-password" type="password" placeholder="Senha" required autocomplete="new-password">
+                <button type="button" class="password-toggle" id="signup-password-toggle" aria-label="Mostrar senha" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M1.5 12s4.5-6 10.5-6 10.5 6 10.5 6-4.5 6-10.5 6S1.5 12 1.5 12Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </button>
+            </div>
             
             <select id="signup-source" required style="width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: 'Poppins', sans-serif; color: #666;">
                 <option value="">Como conheceu nosso site?</option>
@@ -109,6 +125,20 @@
             referralField.required = false; // opcional
         }
     });
+
+    function setupPasswordToggle(toggleId, inputId) {
+        const toggle = document.getElementById(toggleId);
+        const input = document.getElementById(inputId);
+        if (!toggle || !input) return;
+
+        toggle.addEventListener('click', function() {
+            const shouldShow = input.type === 'password';
+            input.type = shouldShow ? 'text' : 'password';
+            toggle.setAttribute('aria-label', shouldShow ? 'Ocultar senha' : 'Mostrar senha');
+            toggle.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+            toggle.classList.toggle('active', shouldShow);
+        });
+    }
     
     function clearLoginFields() {
         const loginEmail = document.getElementById('login-email');
@@ -151,6 +181,9 @@
     window.addEventListener('DOMContentLoaded', function() {
         clearLoginFields();
         clearSignupFields();
+
+        setupPasswordToggle('login-password-toggle', 'login-password');
+        setupPasswordToggle('signup-password-toggle', 'signup-password');
 
         const urlParams = new URLSearchParams(window.location.search);
         const refCode = urlParams.get('ref');

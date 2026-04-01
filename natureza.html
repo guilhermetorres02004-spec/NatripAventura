@@ -178,24 +178,42 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = await fetch('/api/trips'); if (!r.ok) return; const all = await r.json();
             const trips = (all||[]).filter(t=>t.category==='trilhas-e-cachoeiras');
             if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
-            function escUrl(u){ return (u||'').toString().replace(/'/g, "\\'"); }
+            function normalizeImg(u){ if (!u) return ''; const s = (u||'').toString(); return (/^(data:|https?:|\\/)/i).test(s) ? s : ('/' + s)).replace(/'/g, "\\'"); }
+            function collectImages(trip){
+                const list = [];
+                if (trip.coverImage) list.push(trip.coverImage);
+                if (Array.isArray(trip.galleryImages)) list.push(...trip.galleryImages);
+                else if (typeof trip.galleryImages === 'string' && trip.galleryImages.trim()) {
+                    try { const parsed = JSON.parse(trip.galleryImages); if (Array.isArray(parsed)) list.push(...parsed); }
+                    catch { list.push(...trip.galleryImages.split(/\r?\n/)); }
+                }
+                return list.map(normalizeImg).filter(Boolean);
+            }
             container.innerHTML = '';
             trips.forEach(t=>{
-                const rawCover = t.coverImage || '';
-                const finalCover = rawCover ? (new RegExp('^(data:|https?:|/)','i').test(rawCover) ? rawCover : ('/' + rawCover)) : '';
-                const img = finalCover ? finalCover : `img/natureza/img1.jpg`;
+                const images = collectImages(t);
+                const img = images[0] || `img/natureza/img1.jpg`;
                 const href = `cidade.html?nome=${encodeURIComponent(t.city||'')}&date=${encodeURIComponent(t.date||'')}`;
                 const a = document.createElement('a');
                 a.className = 'cidade-card';
                 a.href = href;
                 a.style.height = '200px';
-                if (img) a.style.backgroundImage = `url('${img.replace(/'/g, "\\'")}')`;
+                if (img) a.style.backgroundImage = `url('${img}')`;
                 const ov = document.createElement('div'); ov.className='overlay'; a.appendChild(ov);
                 const inner = document.createElement('div');
                 const h = document.createElement('h3'); h.textContent = t.city||'Destino';
                 const p = document.createElement('p'); p.textContent = t.city || '';
                 inner.appendChild(h); inner.appendChild(p);
                 if (t.description) { const pd = document.createElement('p'); pd.style.marginTop='8px'; pd.style.color='#fff'; pd.textContent = t.description; inner.appendChild(pd); }
+                if (images.length > 1) {
+                    let idx = 0;
+                    const prev = document.createElement('button'); prev.textContent='‹'; prev.className='icon-btn'; prev.style.cssText='position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.45);color:#fff;border:none;border-radius:50%;width:32px;height:32px;z-index:5;';
+                    const next = document.createElement('button'); next.textContent='›'; next.className='icon-btn'; next.style.cssText='position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.45);color:#fff;border:none;border-radius:50%;width:32px;height:32px;z-index:5;';
+                    const updateBg = ()=>{ a.style.backgroundImage = `url('${images[idx]}')`; };
+                    prev.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); idx = (idx - 1 + images.length) % images.length; updateBg(); });
+                    next.addEventListener('click', (ev)=>{ ev.preventDefault(); ev.stopPropagation(); idx = (idx + 1) % images.length; updateBg(); });
+                    a.appendChild(prev); a.appendChild(next);
+                }
                 a.appendChild(inner);
                 container.appendChild(a);
             });

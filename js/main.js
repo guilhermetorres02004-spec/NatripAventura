@@ -7,33 +7,14 @@
 // 4) Expor funções úteis via `window.natripAuth` para outras páginas consumirem.
 // 5) Fornecer um menu de perfil (dropdown) com links para páginas do usuário.
 
-document.addEventListener("DOMContentLoaded", () => {
-    (async function() {
-        // tenta sincronizar usuários do backend para o localStorage (se o backend estiver disponível)
-        async function trySyncFromServer() {
-            try {
-                const resp = await fetch('/api/users', { method: 'GET' });
-                if (!resp.ok) return;
-                const users = await resp.json();
-                if (Array.isArray(users) && users.length > 0) {
-                    // persiste localmente para manter compatibilidade com o código existente
-                    localStorage.setItem('natrip_users', JSON.stringify(users));
-                }
-            } catch (e) {
-                // backend não disponível — segue com storage local
-            }
-        }
-
-        await trySyncFromServer().catch(() => {});
-
-    // headerHTML: string com o markup do cabeçalho. É inserida dinamicamente para evitar duplicação
-    // entre várias páginas e garantir que o JS possa controlar o estado (ex.: texto do perfil).
-    const headerHTML = `
+// Header HTML compartilhado por todas as páginas.
+const headerHTML = `
     <header>
         <div class="header-top">
             <div class="logo-area">
-                <div class="logo-top">Natrip</div>
-                <div class="flag"></div>
+                <a class="logo-link" href="/index.html" aria-label="Ir para a página inicial">
+                    <img class="logo-icon" src="/img/icone-96.png" alt="Natrip Aventuras">
+                </a>
             </div>
 
             <nav class="menu">
@@ -53,14 +34,57 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <div class="header-content">
             <!-- ids "logo" e "slogan" são usados pela animação abaixo -->
-            <h1 id="logo">Natrip Aventura</h1>
+            <h1 id="logo">Natrip Aventuras</h1>
             <p id="slogan">Viagens inesquecíveis por Minas Gerais</p>
         </div>
     </header>
-    `;
+`;
 
-    // Inserimos o header no começo do body para que apareça em todas as páginas.
-    document.body.insertAdjacentHTML("afterbegin", headerHTML);
+function injectHeaderOnce(){
+    if (!document || !document.body) return;
+    if (document.querySelector('header')) return;
+    document.body.insertAdjacentHTML('afterbegin', headerHTML);
+}
+
+function ensureHeaderPresent(){
+    // tenta reinserir se algum motivo removeu ou não carregou a tempo
+    if (!document.querySelector('header')) {
+        injectHeaderOnce();
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ()=>{ injectHeaderOnce(); ensureHeaderPresent(); }, { once: true });
+} else {
+    injectHeaderOnce();
+    ensureHeaderPresent();
+}
+
+// reforço pós-load para ambientes lentos/cached
+window.addEventListener('load', ()=>{ setTimeout(ensureHeaderPresent, 100); setTimeout(ensureHeaderPresent, 500); }, { once:true });
+
+document.addEventListener("DOMContentLoaded", () => {
+    (async function() {
+        // tenta sincronizar usuários do backend para o localStorage (se o backend estiver disponível)
+        async function trySyncFromServer() {
+            try {
+                const resp = await fetch('/api/users', { method: 'GET' });
+                if (!resp.ok) return;
+                const users = await resp.json();
+                if (Array.isArray(users) && users.length > 0) {
+                    // persiste localmente para manter compatibilidade com o código existente
+                    localStorage.setItem('natrip_users', JSON.stringify(users));
+                }
+            } catch (e) {
+                // backend não disponível — segue com storage local
+            }
+        }
+
+    // Certifica o header caso algo o tenha removido antes do DOMContentLoaded
+    injectHeaderOnce();
+
+        // não bloquear o header caso a requisição de usuários demore
+        trySyncFromServer().catch(() => {});
 
     // ===== animação do texto (header) =====
     // Seleciona os elementos que serão animados: o título (`logo`) e o parágrafo (`slogan`).
@@ -440,6 +464,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 return name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
             }
 
+            function normalizeImg(u){ if (!u) return ''; const s = (u||'').toString(); return (/^(data:|https?:|\/)/i).test(s) ? s : ('/' + s); }
+            function collectImages(tripMeta){
+                const list = [];
+                if (tripMeta && tripMeta.coverImage) list.push(tripMeta.coverImage);
+                if (tripMeta && Array.isArray(tripMeta.galleryImages)) list.push(...tripMeta.galleryImages);
+                else if (tripMeta && typeof tripMeta.galleryImages === 'string' && tripMeta.galleryImages.trim()) {
+                    try { const parsed = JSON.parse(tripMeta.galleryImages); if (Array.isArray(parsed)) list.push(...parsed); }
+                    catch { list.push(...tripMeta.galleryImages.split(/\r?\n/)); }
+                }
+                return list.map(normalizeImg).filter(Boolean);
+            }
             function guessCityImage(city){
                 const slug = slugifyCity(city);
                 const candidates = [
@@ -449,20 +484,20 @@ document.addEventListener("DOMContentLoaded", () => {
                     `img/cidades/${slug}/img1.jfif`,
                     `img/cidades/${slug}/img1.webp`
                 ];
-                for (const p of candidates) {
-                    // We can't synchronously test file existence in browser; use first candidate and let broken images fallback via CSS
-                    return p;
-                }
-                return 'img/placeholder.jpg';
+                return candidates[0];
             }
 
             listEl.innerHTML = proximas.map(t => {
                 const iso = `${t.dateObj.getFullYear()}-${String(t.dateObj.getMonth()+1).padStart(2,'0')}-${String(t.dateObj.getDate()).padStart(2,'0')}`;
                 const href = `cidade.html?nome=${encodeURIComponent(t.city)}&date=${iso}`;
-                const img = guessCityImage(t.city);
+                const images = collectImages(t.meta);
+                const img = images[0] || guessCityImage(t.city);
                 return `
                 <div class="prox-card">
-                    <div class="pc-thumb" style="background-image:url('${img}')" aria-hidden="true"></div>
+                    <div class="pc-thumb" data-images='${JSON.stringify(images)}' style="background-image:url('${img}')" aria-hidden="true">
+                        ${images.length > 1 ? `<button class="icon-btn" data-dir="-1" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.45);color:#fff;border:none;border-radius:50%;width:28px;height:28px;">‹</button>
+                        <button class="icon-btn" data-dir="1" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.45);color:#fff;border:none;border-radius:50%;width:28px;height:28px;">›</button>` : ''}
+                    </div>
                     <div class="pc-body">
                         <div class="pc-left">
                             <strong>${t.city}</strong>
@@ -477,6 +512,23 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                 </div>
             `}).join('');
+
+            // attach slider events for proximas thumbs
+            listEl.querySelectorAll('.pc-thumb').forEach(thumb => {
+                const imgs = (()=>{ try { const arr = JSON.parse(thumb.dataset.images||'[]'); return Array.isArray(arr) ? arr : []; } catch(e){ return []; } })();
+                if (!imgs || imgs.length <= 1) return;
+                let idx = 0;
+                const btns = thumb.querySelectorAll('button[data-dir]');
+                const update = ()=>{ thumb.style.backgroundImage = `url('${imgs[idx]}')`; };
+                btns.forEach(btn => {
+                    btn.addEventListener('click', (ev)=>{
+                        ev.preventDefault(); ev.stopPropagation();
+                        const dir = parseInt(btn.dataset.dir,10) || 0;
+                        idx = (idx + dir + imgs.length) % imgs.length;
+                        update();
+                    });
+                });
+            });
         })();
     }
     })();

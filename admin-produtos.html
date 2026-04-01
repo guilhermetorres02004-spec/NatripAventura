@@ -24,14 +24,8 @@
 
             <div class="form-field" style="width:100%;">
                 <label for="product-category">Categoria</label>
-                <select id="product-category" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;">
-                    <option value="">Selecione uma categoria</option>
-                    <option value="camisas (masculino)">camisas (masculino)</option>
-                    <option value="camisas (feminina)">camisas (feminina)</option>
-                    <option value="calcas (masculino)">calcas (masculino)</option>
-                    <option value="calcas (feminina)">calcas (feminina)</option>
-                    <option value="outros...">outros...</option>
-                </select>
+                <select id="product-category" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;"></select>
+                <input id="product-category-new" type="text" placeholder="Nova categoria" style="margin-top:8px;padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;display:none;" />
             </div>
 
             <div class="form-field" style="width:100%;">
@@ -98,6 +92,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    const BASE_CATEGORIES = [
+        'camisas (masculino)',
+        'camisas (feminina)',
+        'calcas (masculino)',
+        'calcas (feminina)'
+    ];
+    const CATEGORY_KEY = 'natrip_product_categories';
+
+    function loadCustomCategories(){
+        try {
+            const arr = JSON.parse(localStorage.getItem(CATEGORY_KEY) || '[]');
+            return Array.isArray(arr) ? arr.filter(c => c && !BASE_CATEGORIES.includes(c)).map(c=>c.trim()).filter(Boolean) : [];
+        } catch(e){ return []; }
+    }
+
+    function saveCustomCategories(list){
+        const unique = Array.from(new Set((list||[]).map(c=>c.trim()).filter(Boolean))).filter(c => !BASE_CATEGORIES.includes(c));
+        localStorage.setItem(CATEGORY_KEY, JSON.stringify(unique));
+    }
+
+    function buildCategoryOptions(selected){
+        const select = document.getElementById('product-category');
+        if (!select) return;
+        const custom = loadCustomCategories();
+        const merged = [...BASE_CATEGORIES, ...custom, 'outros...'];
+        const current = selected || select.value;
+        select.innerHTML = '';
+        const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent='Selecione uma categoria';
+        select.appendChild(placeholder);
+        merged.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat;
+            if (cat === current) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
     async function getProducts(){
         try {
             const resp = await fetch('/api/products');
@@ -159,12 +191,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetForm(){
         const nameEl = document.getElementById('product-name');
         const categoryEl = document.getElementById('product-category');
+        const categoryNewEl = document.getElementById('product-category-new');
         const priceEl = document.getElementById('product-price');
         const stockEl = document.getElementById('product-stock');
         const imageEl = document.getElementById('product-image');
         const preview = document.getElementById('product-image-preview');
         if (nameEl) nameEl.value = '';
         if (categoryEl) categoryEl.value = '';
+        if (categoryNewEl){ categoryNewEl.value=''; categoryNewEl.style.display='none'; }
         if (priceEl) priceEl.value = '';
         if (stockEl) stockEl.value = '';
         if (imageEl) imageEl.value = '';
@@ -197,10 +231,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function initCategorySelect(){
+        const select = document.getElementById('product-category');
+        const newInput = document.getElementById('product-category-new');
+        buildCategoryOptions();
+        if (!select || !newInput) return;
+        select.addEventListener('change', (e)=>{
+            const val = e.target.value;
+            if (val === 'outros...') {
+                newInput.style.display = 'block';
+                newInput.focus();
+            } else {
+                newInput.style.display = 'none';
+                newInput.value = '';
+            }
+        });
+    }
+
     async function init(){
         const ok = await checkAdmin();
         if (!ok) return;
 
+        initCategorySelect();
         initImagePreview();
         await renderProducts();
 
@@ -209,7 +261,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addBtn.addEventListener('click', async ()=>{
             const name = (document.getElementById('product-name')?.value || '').trim();
-            const category = (document.getElementById('product-category')?.value || '').trim();
+            const categorySelect = document.getElementById('product-category');
+            const categoryNew = document.getElementById('product-category-new');
+            let category = (categorySelect?.value || '').trim();
             const priceRaw = document.getElementById('product-price')?.value || '';
             const stockRaw = document.getElementById('product-stock')?.value || '';
             const price = parseFloat(priceRaw);
@@ -217,6 +271,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!name) return alert('Preencha o nome do produto.');
             if (!category) return alert('Selecione uma categoria.');
+            if (category === 'outros...') {
+                const newCat = (categoryNew?.value || '').trim();
+                if (!newCat) return alert('Digite o nome da nova categoria.');
+                category = newCat;
+                const custom = loadCustomCategories();
+                if (!custom.includes(newCat)) {
+                    const updated = [...custom, newCat];
+                    saveCustomCategories(updated);
+                    buildCategoryOptions(newCat);
+                }
+            }
             if (isNaN(price) || price < 0) return alert('Informe um preço válido.');
             if (!Number.isInteger(stock) || stock < 0) return alert('Informe um estoque válido (somente números inteiros).');
             if (!selectedImageData) return alert('Selecione uma imagem do produto.');

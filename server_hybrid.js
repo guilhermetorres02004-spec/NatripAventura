@@ -28,7 +28,7 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -195,6 +195,7 @@ if (USE_POSTGRES) {
           points TEXT,
           price DECIMAL(10,2),
           coverImage VARCHAR(500),
+          galleryImages TEXT,
           createdBy VARCHAR(255),
           createdAt VARCHAR(50)
         )
@@ -216,6 +217,21 @@ if (USE_POSTGRES) {
         )
       `);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_banners_order ON banners(orderIndex)`);
+
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS products (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255),
+          category VARCHAR(120),
+          price DECIMAL(10,2),
+          stock INTEGER,
+          image TEXT,
+          createdBy VARCHAR(255),
+          createdAt VARCHAR(50)
+        )
+      `);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
 
     } else {
       // SQLite schema
@@ -247,11 +263,15 @@ if (USE_POSTGRES) {
           points TEXT,
           price REAL,
           coverImage TEXT,
+          galleryImages TEXT,
           createdBy TEXT,
           createdAt TEXT
         )
       `);
 
+
+    // Add galleryImages column if the table already existed
+    try { await db.run('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
       await db.run(`
         CREATE TABLE IF NOT EXISTS banners (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,6 +285,21 @@ if (USE_POSTGRES) {
           createdAt TEXT
         )
       `);
+
+      await db.run(`
+        CREATE TABLE IF NOT EXISTS products (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT,
+          category TEXT,
+          price REAL,
+          stock INTEGER,
+          image TEXT,
+          createdBy TEXT,
+          createdAt TEXT
+        )
+      `);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+      await db.run(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
     }
 
     // Create admin user
@@ -349,6 +384,68 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+// Products
+app.get('/api/products', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM products ORDER BY COALESCE(createdAt, "") DESC');
+    res.json(rows || []);
+  } catch (err) {
+    console.error('Error fetching products:', err);
+    res.status(500).json({ error: 'Erro ao ler produtos' });
+  }
+});
+
+app.post('/api/products/upsert', async (req, res) => {
+  const products = Array.isArray(req.body.products) ? req.body.products : [];
+  if (products.length === 0) return res.json({ ok: true });
+
+  try {
+    for (const p of products) {
+      const name = p.name || '';
+      const category = p.category || '';
+      const price = (typeof p.price !== 'undefined' && p.price !== null && p.price !== '') ? parseFloat(p.price) : 0;
+      const stock = Number.isFinite(p.stock) ? parseInt(p.stock, 10) : 0;
+      const image = p.image || p.img || '';
+      const createdBy = p.createdBy || '';
+      const createdAt = p.createdAt || new Date().toISOString();
+
+      if (p.id) {
+        await db.run(
+          SQL(
+            'UPDATE products SET name=$1, category=$2, price=$3, stock=$4, image=$5, createdBy=$6, createdAt=$7 WHERE id=$8',
+            'UPDATE products SET name=?, category=?, price=?, stock=?, image=?, createdBy=?, createdAt=? WHERE id=?'
+          ),
+          [name, category, price, stock, image, createdBy, createdAt, p.id]
+        );
+      } else {
+        await db.run(
+          SQL(
+            'INSERT INTO products (name, category, price, stock, image, createdBy, createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            'INSERT INTO products (name, category, price, stock, image, createdBy, createdAt) VALUES (?,?,?,?,?,?,?)'
+          ),
+          [name, category, price, stock, image, createdBy, createdAt]
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error upserting products:', err);
+    res.status(500).json({ error: 'Erro ao salvar produtos' });
+  }
+});
+
+app.post('/api/products/delete', async (req, res) => {
+  const id = req.body && req.body.id;
+  if (!id) return res.status(400).json({ error: 'id obrigatório' });
+  try {
+    await db.run(SQL('DELETE FROM products WHERE id = $1', 'DELETE FROM products WHERE id = ?'), [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ error: 'Erro ao deletar produto' });
+  }
+});
+
 app.post('/api/signup', async (req, res) => {
   const { name, cpf, phone, email, password, source, referredBy } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email e password obrigatórios' });
@@ -421,6 +518,15 @@ app.get('/api/trips', async (req, res) => {
           r.points = r.points.split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean);
         } else r.points = [];
       }
+
+      try {
+        r.galleryImages = r.galleryImages ? JSON.parse(r.galleryImages) : [];
+      } catch(e) {
+        if (typeof r.galleryImages === 'string' && r.galleryImages.trim()) {
+          r.galleryImages = r.galleryImages.split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean);
+        } else r.galleryImages = [];
+      }
+
       return r;
     });
     res.json(parsed);
@@ -440,22 +546,23 @@ app.post('/api/trips/upsert', async (req, res) => {
         t.city||'', t.date||'', t.category||'', t.seats||0,
         t.departureTime||'', t.returnTime||'', t.description||'',
         Array.isArray(t.points) ? JSON.stringify(t.points) : (t.points||''),
+        Array.isArray(t.galleryImages) ? JSON.stringify(t.galleryImages) : (t.galleryImages||''),
         t.price||null, t.coverImage||'', t.createdBy||'', t.createdAt||''
       ];
       
       if (t.id) {
         await db.run(
           SQL(
-            'UPDATE trips SET city=$1, date=$2, category=$3, seats=$4, departureTime=$5, returnTime=$6, description=$7, points=$8, price=$9, coverImage=$10, createdBy=$11, createdAt=$12 WHERE id=$13',
-            'UPDATE trips SET city=?, date=?, category=?, seats=?, departureTime=?, returnTime=?, description=?, points=?, price=?, coverImage=?, createdBy=?, createdAt=? WHERE id=?'
+            'UPDATE trips SET city=$1, date=$2, category=$3, seats=$4, departureTime=$5, returnTime=$6, description=$7, points=$8, galleryImages=$9, price=$10, coverImage=$11, createdBy=$12, createdAt=$13 WHERE id=$14',
+            'UPDATE trips SET city=?, date=?, category=?, seats=?, departureTime=?, returnTime=?, description=?, points=?, galleryImages=?, price=?, coverImage=?, createdBy=?, createdAt=? WHERE id=?'
           ),
           [...values, t.id]
         );
       } else {
         await db.run(
           SQL(
-            'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-            'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,galleryImages,price,coverImage,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+            'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,galleryImages,price,coverImage,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
           ),
           values
         );

@@ -36,18 +36,33 @@ document.addEventListener('DOMContentLoaded', ()=>{
       const trips = (all||[]).filter(t=>t.category==='bate-volta');
       if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
       function slug(name){ return (name||'').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
-      function escUrl(u){ return (u||'').toString().replace(/'/g, "\\'"); }
+      function normalizeImg(u){
+        if (!u) return '';
+        const s = (u||'').toString();
+        const normalized = (/^(data:|https?:|\/)/i).test(s) ? s : ('/' + s);
+        return normalized.replace(/'/g, "\\'");
+      }
+      function collectImages(trip){
+        const list = [];
+        if (trip.coverImage) list.push(trip.coverImage);
+        if (Array.isArray(trip.galleryImages)) list.push(...trip.galleryImages);
+        else if (typeof trip.galleryImages === 'string' && trip.galleryImages.trim()) {
+          try { const parsed = JSON.parse(trip.galleryImages); if (Array.isArray(parsed)) list.push(...parsed); }
+          catch { list.push(...trip.galleryImages.split(/\r?\n/)); }
+        }
+        return list.map(normalizeImg).filter(Boolean);
+      }
       container.innerHTML = '';
       trips.forEach(t=>{
         const s = slug(t.city||'');
         const href = `cidade.html?nome=${encodeURIComponent(t.city||'')}&date=${encodeURIComponent(t.date||'')}`;
-        const rawCover = t.coverImage || '';
-                        const finalCover = rawCover ? (new RegExp('^(data:|https?:|/)','i').test(rawCover) ? rawCover : ('/' + rawCover)) : '';
+        const images = collectImages(t);
+        const finalCover = images[0] || '';
         const a = document.createElement('a');
         a.className = 'cidade-card cidade-card-' + s;
         a.href = href;
         a.style.height = '200px';
-        if (finalCover) a.style.backgroundImage = `url('${finalCover.replace(/'/g, "\\'")}')`;
+        if (finalCover) a.style.backgroundImage = `url('${finalCover}')`;
         const ov = document.createElement('div'); ov.className='overlay'; a.appendChild(ov);
         const inner = document.createElement('div');
         const h = document.createElement('h3'); h.textContent = t.city||'Destino';

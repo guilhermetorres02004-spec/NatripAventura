@@ -210,6 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
         cover.style.display = 'none';
     } else {
         cover.style.backgroundImage = `url('${data.img}')`;
+        cover.style.backgroundSize = 'cover';
+        cover.style.backgroundPosition = 'center';
+        cover.style.backgroundRepeat = 'no-repeat';
+        cover.style.backgroundColor = '#0f0f0f';
         cover.style.display = '';
     }
     points.innerHTML = data.points.map(p => `<li>${p}</li>`).join('');
@@ -232,13 +236,37 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (typeof trip.points === 'string' && trip.points.trim()) {
                 points.innerHTML = trip.points.split(/\r?\n|,/).map(p => `<li>${p.trim()}</li>`).join('');
             }
-            if (trip.coverImage) {
-                const raw = trip.coverImage;
-                const finalCover = (new RegExp('^(data:|https?:|/)','i').test(raw) ? raw : ('/' + raw));
-                cover.style.backgroundImage = `url('${finalCover.replace(/'/g, "\\'")}')`;
+            const normalizeImg = (u)=>{
+                if (!u) return '';
+                const s = (u||'').toString();
+                const normalized = (/^(data:|https?:|\/)/i).test(s) ? s : ('/' + s);
+                return normalized.replace(/'/g, "\\'");
+            };
+            const galleryRaw = [];
+            if (trip.coverImage) galleryRaw.push(trip.coverImage);
+            if (Array.isArray(trip.galleryImages)) galleryRaw.push(...trip.galleryImages);
+            else if (typeof trip.galleryImages === 'string' && trip.galleryImages.trim()) {
+                try {
+                    const parsed = JSON.parse(trip.galleryImages);
+                    if (Array.isArray(parsed)) galleryRaw.push(...parsed);
+                } catch {
+                    galleryRaw.push(...trip.galleryImages.split(/\r?\n|,/));
+                }
+            }
+            const gallery = galleryRaw.map(normalizeImg).filter(Boolean);
+
+            const finalCover = gallery[0];
+            if (gallery.length > 0) {
+                // já temos imagens no carrossel; evita duplicar na faixa de capa
+                cover.style.display = 'none';
+                try { initCarousel(gallery); } catch(e){}
+            } else if (finalCover) {
+                cover.style.backgroundImage = `url('${finalCover}')`;
+                cover.style.backgroundSize = 'cover';
+                cover.style.backgroundPosition = 'center';
+                cover.style.backgroundRepeat = 'no-repeat';
+                cover.style.backgroundColor = '#0f0f0f';
                 cover.style.display = '';
-                // also use cover as gallery if no gallery present
-                try { initCarousel([finalCover]); } catch(e){}
             }
         } catch(e) { /* ignore */ }
     })();
@@ -566,32 +594,49 @@ let autoSlideInterval;
 
 // Inicializa o carrossel com as imagens fornecidas
 function initCarousel(images) {
-    carouselImages = images;
     const carousel = document.getElementById('city-carousel');
     const indicatorsContainer = document.getElementById('carousel-indicators');
-    
+    const prevBtn = carousel.querySelector('.prev');
+    const nextBtn = carousel.querySelector('.next');
+
+    // reset
+    clearInterval(autoSlideInterval);
+    currentSlide = 0;
+    carousel.querySelectorAll('.carousel-slide').forEach(el => el.remove());
+    indicatorsContainer.innerHTML = '';
+
     if (!images || images.length === 0) {
         carousel.style.display = 'none';
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        indicatorsContainer.style.display = 'none';
         return;
     }
 
-    // Criar slides
-    const slidesHTML = images.map((img, index) => 
+    carousel.style.display = '';
+    carouselImages = images;
+
+    const slidesHTML = images.map((img, index) =>
         `<div class="carousel-slide ${index === 0 ? 'active' : ''}" style="background-image: url('${img}')"></div>`
     ).join('');
-    
-    // Criar indicadores
-    const indicatorsHTML = images.map((_, index) => 
+
+    const indicatorsHTML = images.map((_, index) =>
         `<span class="carousel-indicator ${index === 0 ? 'active' : ''}" onclick="goToSlide(${index})"></span>`
     ).join('');
-    
-    // Inserir antes dos botões
-    const prevBtn = carousel.querySelector('.prev');
+
     carousel.insertAdjacentHTML('afterbegin', slidesHTML);
     indicatorsContainer.innerHTML = indicatorsHTML;
-    
-    // Iniciar troca automática a cada 4 segundos
-    startAutoSlide();
+
+    if (images.length > 1) {
+        if (prevBtn) prevBtn.style.display = '';
+        if (nextBtn) nextBtn.style.display = '';
+        indicatorsContainer.style.display = '';
+        startAutoSlide();
+    } else {
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        indicatorsContainer.style.display = 'none';
+    }
 }
 
 // Muda para o próximo ou anterior slide

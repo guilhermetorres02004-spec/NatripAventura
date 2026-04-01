@@ -30,13 +30,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const CART_KEY = 'natrip_shop_cart';
     let normalizedProducts = [];
-    const categoryOrder = [
+    const BASE_CATEGORIES = [
         'camisas (masculino)',
         'camisas (feminina)',
         'calcas (masculino)',
-        'calcas (feminina)',
-        'outros...'
+        'calcas (feminina)'
     ];
+    const CATEGORY_KEY = 'natrip_product_categories';
+
+    function loadCustomCategories(){
+        try {
+            const arr = JSON.parse(localStorage.getItem(CATEGORY_KEY) || '[]');
+            return Array.isArray(arr) ? arr.map(c=>String(c||'').trim()).filter(Boolean) : [];
+        } catch(e){ return []; }
+    }
+
+    const categoryOrder = Array.from(new Set([...BASE_CATEGORIES, ...loadCustomCategories(), 'outros...']));
 
     const fallbackProducts = [
         { id: 'p1', name: 'Camiseta Natrip', price: 59.9, img: 'https://images.unsplash.com/photo-1520975917278-1a7a7f8c7f3a' },

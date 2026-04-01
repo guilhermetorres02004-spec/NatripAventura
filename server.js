@@ -22,7 +22,7 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -134,12 +134,31 @@ testDbConnection();
         points TEXT,
         price DECIMAL(10,2),
         coverImage VARCHAR(500),
+        galleryImages TEXT,
         createdBy VARCHAR(255),
         createdAt VARCHAR(50)
       )
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_trips_date ON trips(date)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_trips_category ON trips(category)`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255),
+        category VARCHAR(120),
+        price DECIMAL(10,2),
+        stock INTEGER,
+        image TEXT,
+        createdBy VARCHAR(255),
+        createdAt VARCHAR(50)
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
+
+    // Add galleryImages if table already exists
+    try { await client.query('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
 
     // Create banners table
     await client.query(`
@@ -220,6 +239,62 @@ app.get('/api/users', async (req, res) => {
   } catch (err) {
     console.error('Error fetching users:', err);
     res.status(500).json({ error: 'Erro ao ler usuários' });
+  }
+});
+
+// Products
+app.get('/api/products', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id,name,category,price,stock,image,createdBy,createdAt FROM products ORDER BY COALESCE(createdAt, \'\') DESC');
+    res.json(result.rows || []);
+  } catch (err) {
+    console.error('Error fetching products:', err);
+    res.status(500).json({ error: 'Erro ao ler produtos' });
+  }
+});
+
+app.post('/api/products/upsert', async (req, res) => {
+  const products = Array.isArray(req.body.products) ? req.body.products : [];
+  if (products.length === 0) return res.json({ ok: true });
+
+  try {
+    for (const p of products) {
+      const name = p.name || '';
+      const category = p.category || '';
+      const price = (typeof p.price !== 'undefined' && p.price !== null && p.price !== '') ? parseFloat(p.price) : 0;
+      const stock = Number.isFinite(p.stock) ? parseInt(p.stock, 10) : 0;
+      const image = p.image || p.img || '';
+      const createdBy = p.createdBy || '';
+      const createdAt = p.createdAt || new Date().toISOString();
+
+      if (p.id) {
+        await pool.query(
+          'UPDATE products SET name=$1, category=$2, price=$3, stock=$4, image=$5, createdBy=$6, createdAt=$7 WHERE id=$8',
+          [name, category, price, stock, image, createdBy, createdAt, p.id]
+        );
+      } else {
+        await pool.query(
+          'INSERT INTO products (name, category, price, stock, image, createdBy, createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [name, category, price, stock, image, createdBy, createdAt]
+        );
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error upserting products:', err);
+    res.status(500).json({ error: 'Erro ao salvar produtos' });
+  }
+});
+
+app.post('/api/products/delete', async (req, res) => {
+  const id = req.body && req.body.id;
+  if (!id) return res.status(400).json({ error: 'id obrigatório' });
+  try {
+    await pool.query('DELETE FROM products WHERE id = $1', [id]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error deleting product:', err);
+    res.status(500).json({ error: 'Erro ao deletar produto' });
   }
 });
 
@@ -345,7 +420,7 @@ app.post('/api/users/upsert', async (req, res) => {
 // trips endpoints
 app.get('/api/trips', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id,city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt FROM trips ORDER BY date');
+    const result = await pool.query('SELECT id,city,date,category,seats,departureTime,returnTime,description,points,galleryImages,price,coverImage,createdBy,createdAt FROM trips ORDER BY date');
     const parsed = (result.rows||[]).map(r => {
       try {
         r.points = r.points ? JSON.parse(r.points) : [];
@@ -353,6 +428,14 @@ app.get('/api/trips', async (req, res) => {
         if (typeof r.points === 'string' && r.points.trim()) {
           r.points = r.points.split(/\r?\n|,/) .map(s=>s.trim()).filter(Boolean);
         } else r.points = [];
+      }
+
+      try {
+        r.galleryImages = r.galleryImages ? JSON.parse(r.galleryImages) : [];
+      } catch(e) {
+        if (typeof r.galleryImages === 'string' && r.galleryImages.trim()) {
+          r.galleryImages = r.galleryImages.split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean);
+        } else r.galleryImages = [];
       }
       return r;
     });
@@ -374,6 +457,7 @@ app.post('/api/trips/upsert', async (req, res) => {
       const desc = t.description || t.desc || '';
       const category = t.category || '';
       const cover = t.coverImage || '';
+      const gallery = Array.isArray(t.galleryImages) ? JSON.stringify(t.galleryImages) : (t.galleryImages || '');
       let pointsVal = '';
       if (Array.isArray(t.points)) pointsVal = JSON.stringify(t.points);
       else if (typeof t.points === 'string') pointsVal = t.points;
@@ -382,13 +466,13 @@ app.post('/api/trips/upsert', async (req, res) => {
       
       if (t.id) {
         await pool.query(
-          'UPDATE trips SET city=$1, date=$2, category=$3, seats=$4, departureTime=$5, returnTime=$6, description=$7, points=$8, price=$9, coverImage=$10, createdBy=$11, createdAt=$12 WHERE id=$13',
-          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'', t.id]
+          'UPDATE trips SET city=$1, date=$2, category=$3, seats=$4, departureTime=$5, returnTime=$6, description=$7, points=$8, galleryImages=$9, price=$10, coverImage=$11, createdBy=$12, createdAt=$13 WHERE id=$14',
+          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, gallery, price, cover, t.createdBy||'', t.createdAt||'', t.id]
         );
       } else {
         await pool.query(
-          'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'']
+          'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,galleryImages,price,coverImage,createdBy,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, gallery, price, cover, t.createdBy||'', t.createdAt||'']
         );
       }
     }

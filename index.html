@@ -16,6 +16,34 @@
 </head>
 <body>
 
+    <!-- Fallback header: garantimos que o cabeçalho aparece mesmo se o JS não injetar -->
+    <header>
+        <div class="header-top">
+            <div class="logo-area">
+                <a class="logo-link" href="/index.html" aria-label="Ir para a página inicial">
+                    <img class="logo-icon" src="/img/icone-96.png" alt="Natrip Aventuras">
+                </a>
+            </div>
+
+            <nav class="menu">
+                <a href="/index.html">Início</a>
+                <a href="/shop.html">Shop</a>
+                <a href="/sobre.html">Sobre</a>
+                <a href="/contato.html">Contato</a>
+                <a href="/admin-notificacoes.html" id="admin-notifications-link" title="Notificações de compras" style="display:none;align-items:center;justify-content:center;font-size:1.2rem;line-height:1;">🔔</a>
+                <div class="perfil-menu">
+                    <button class="perfil-btn">👤 Perfil</button>
+                    <div class="perfil-dropdown" id="perfil-dropdown" aria-hidden="true"></div>
+                </div>
+            </nav>
+        </div>
+
+        <div class="header-content">
+            <h1 id="logo">Natrip Aventuras</h1>
+            <p id="slogan">Viagens inesquecíveis por Minas Gerais</p>
+        </div>
+    </header>
+
 <!-- Área principal com cartões de destino. Cada cartão é um link para uma seção do site. -->
 <section class="destinos-layout">
     <!-- Cartão 1: leva à lista de cidades históricas (arquivo: cidades historicas/cidades-historicas.html) -->

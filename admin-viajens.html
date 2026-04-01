@@ -80,6 +80,14 @@
                     <img id="trip-cover-preview" src="" alt="Preview" style="width:96px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:none;" />
                 </div>
             </div>
+            <div class="form-field" style="width:100%;">
+                <label for="trip-gallery-urls">Galeria (URLs ou base64, uma por linha)</label>
+                <textarea id="trip-gallery-urls" rows="3" placeholder="https://.../imagem1.jpg&#10;https://.../imagem2.jpg" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;"></textarea>
+                <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input id="trip-gallery-files" type="file" accept="image/*" multiple style="flex:0 0 auto;" />
+                    <div id="trip-gallery-preview" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+                </div>
+            </div>
             <div style="width:100%;display:flex;justify-content:flex-end;">
                 <button id="trip-add" class="save-btn">Criar Viagem</button>
             </div>
@@ -225,6 +233,58 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function initGalleryInputs(){
+        const fileEl = document.getElementById('trip-gallery-files');
+        const textEl = document.getElementById('trip-gallery-urls');
+        const preview = document.getElementById('trip-gallery-preview');
+
+        function setPreview(urls){
+            if (!preview) return;
+            preview.innerHTML = '';
+            urls.slice(0,12).forEach(u=>{
+                const img = document.createElement('img');
+                img.src = u;
+                img.style.cssText = 'width:72px;height:48px;object-fit:cover;border:1px solid #ddd;border-radius:6px;';
+                preview.appendChild(img);
+            });
+        }
+
+        function getUrls(){
+            if (!textEl) return [];
+            return textEl.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+        }
+
+        function appendUrls(urls){
+            if (!textEl || !urls.length) return;
+            const current = getUrls();
+            const merged = [...current, ...urls];
+            textEl.value = merged.join('\n');
+            setPreview(merged);
+        }
+
+        if (fileEl) {
+            fileEl.addEventListener('change', (e)=>{
+                const files = Array.from(e.target.files || []);
+                if (!files.length) return;
+                let remaining = files.length;
+                const collected = [];
+                files.forEach(f=>{
+                    const reader = new FileReader();
+                    reader.onload = ()=>{
+                        collected.push(reader.result);
+                        remaining -= 1;
+                        if (remaining === 0) appendUrls(collected);
+                    };
+                    reader.readAsDataURL(f);
+                });
+            });
+        }
+
+        if (textEl) {
+            textEl.addEventListener('input', ()=>{ setPreview(getUrls()); });
+        }
+    }
+
     // ===== BANNERS: preview/load/save/delete =====
     async function loadBanners(){ try { const r = await fetch('/api/banners'); if(!r.ok) return []; return await r.json(); } catch(e){ return []; } }
     async function deleteBanner(id){ try { const r = await fetch('/api/banners/delete',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) }); return r.ok; } catch(e){ return false; } }
@@ -288,12 +348,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const desc = document.getElementById('trip-desc'); if(desc) desc.value='';
             const points = document.getElementById('trip-points'); if(points) points.value='';
             const price = document.getElementById('trip-price'); if(price) price.value='';
+            const galleryUrls = document.getElementById('trip-gallery-urls'); if (galleryUrls) galleryUrls.value='';
+            const galleryFiles = document.getElementById('trip-gallery-files'); if (galleryFiles) galleryFiles.value='';
+            const galleryPrev = document.getElementById('trip-gallery-preview'); if (galleryPrev) galleryPrev.innerHTML='';
         } catch(e){}
     }
 
     async function init(){
         const ok = await checkAdmin(); if(!ok) return;
-        setMinDate(); initCityOther(); initCoverPreview(); await render();
+        setMinDate(); initCityOther(); initCoverPreview(); initGalleryInputs(); await render();
         initBannerPreview(); await renderBanners();
 
         const tripAddBtn = document.getElementById('trip-add');
@@ -311,10 +374,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const desc = document.getElementById('trip-desc') ? document.getElementById('trip-desc').value.trim() : '';
                 const pointsRaw = document.getElementById('trip-points') ? document.getElementById('trip-points').value.trim() : '';
                 const points = pointsRaw ? pointsRaw.split(/\r?\n|,/) .map(s=>s.trim()).filter(Boolean) : [];
+                const galleryRaw = document.getElementById('trip-gallery-urls') ? document.getElementById('trip-gallery-urls').value.trim() : '';
+                const galleryImages = galleryRaw ? galleryRaw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean) : [];
                 const seatsEl = document.getElementById('trip-seats'); const seats = seatsEl ? (parseInt(seatsEl.value,10)||1) : 1;
                 if (!date) return alert('Escolha uma data'); if (dateEl && dateEl.min && date < dateEl.min) return alert('Escolha uma data igual ou posterior a hoje');
                 const priceVal = document.getElementById('trip-price') ? document.getElementById('trip-price').value : '';
-                const newTrip = { city, date, category, departureTime: departure, departureAddress, returnTime: ret, description: desc, points, seats, price: priceVal, coverImage: cover, createdBy: current.email, createdAt: new Date().toISOString() };
+                const newTrip = { city, date, category, departureTime: departure, departureAddress, returnTime: ret, description: desc, points, galleryImages, seats, price: priceVal, coverImage: cover, createdBy: current.email, createdAt: new Date().toISOString() };
                 try {
                     const r = await fetch('/api/trips/upsert', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ trips: [newTrip] }) });
                     if (!r.ok) return alert('Falha ao criar viagem.');
