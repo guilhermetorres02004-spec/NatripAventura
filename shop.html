@@ -74,7 +74,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const stock = Math.max(0, parseInt(p.stock, 10) || 0);
         const img = p.img || p.image || 'https://images.unsplash.com/photo-1503602642458-232111445657';
         const category = String(p.category || '').trim() || 'Sem categoria';
-        return { id: String(id), name, price, stock, img, category };
+        let gallery = [];
+        try {
+            if (Array.isArray(p.gallery)) gallery = p.gallery.filter(Boolean);
+            else if (typeof p.gallery === 'string' && p.gallery.trim()) gallery = JSON.parse(p.gallery);
+        } catch(e) {}
+        if (!gallery.length) gallery = [img];
+        let variants = [];
+        try {
+            if (Array.isArray(p.variants)) variants = p.variants;
+            else if (typeof p.variants === 'string' && p.variants.trim()) variants = JSON.parse(p.variants);
+        } catch(e) {}
+        return { id: String(id), name, price, stock, img, category, gallery, variants };
     }
 
     function dedupeProducts(items){

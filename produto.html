@@ -47,7 +47,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         const stock = Math.max(0, parseInt(p.stock, 10) || 0);
         const img = p.img || p.image || 'https://images.unsplash.com/photo-1503602642458-232111445657';
         const category = String(p.category || '').trim() || 'Sem categoria';
-        return { id: String(id), name, price, stock, img, category };
+        let gallery = [];
+        try {
+            if (Array.isArray(p.gallery)) gallery = p.gallery.filter(Boolean);
+            else if (typeof p.gallery === 'string' && p.gallery.trim()) gallery = JSON.parse(p.gallery);
+        } catch(e) {}
+        if (!gallery.length) gallery = [img];
+        let variants = [];
+        try {
+            if (Array.isArray(p.variants)) variants = p.variants;
+            else if (typeof p.variants === 'string' && p.variants.trim()) variants = JSON.parse(p.variants);
+        } catch(e) {}
+        return { id: String(id), name, price, stock, img, category, gallery, variants };
     }
 
     function buildProductNarrative(product){
@@ -142,7 +153,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const highlights = buildHighlights(product);
         const narrative = buildProductNarrative(product);
         const installPrice = (Number(product.price || 0) / 3).toFixed(2).replace('.', ',');
-        const imageSet = [product.img, product.img, product.img];
 
         document.title = `${product.name} | Natrip Aventura`;
         root.innerHTML = `
@@ -157,7 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="product-layout">
                 <section class="product-gallery-panel">
                     <div class="product-thumb-list">
-                        ${imageSet.map((image, index) => `
+                        ${product.gallery.map((image, index) => `
                             <button class="product-thumb ${index === 0 ? 'is-active' : ''}" type="button" data-image="${image}" aria-label="Ver imagem ${index + 1} do produto">
                                 <img src="${image}" alt="Miniatura ${index + 1} de ${product.name}">
                             </button>
@@ -184,7 +194,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <p class="product-short-copy">Produto publicado na loja da Natrip Aventuras com checkout direto, estoque visível e acesso imediato ao carrinho.</p>
                     </div>
-
+                    ${product.variants.length > 0 ? `
+                    <div class="product-variants-block">
+                        <div class="product-variants-label">Modelo</div>
+                        <div class="product-variants-row">
+                            ${product.variants.map((v, i) => `
+                                <button class="product-variant-btn${i === 0 ? ' is-active' : ''}" type="button"
+                                    data-variant-index="${i}" data-image="${v.image || product.img}">
+                                    ${v.image ? `<img src="${v.image}" alt="${v.label || ''}">` : ''}
+                                    <span>${v.label || 'Modelo ' + (i + 1)}</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>` : ''}
                     <aside class="product-purchase-box">
                         <div class="product-stock-banner ${product.stock > 0 ? 'is-available' : 'is-unavailable'}">
                             ${product.stock > 0 ? `Disponível agora: ${product.stock} unidade${product.stock === 1 ? '' : 's'}` : 'Produto indisponível no momento'}
@@ -225,6 +247,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderProduct(product);
 
     root.addEventListener('click', (event) => {
+        const variantBtn = event.target.closest('.product-variant-btn');
+        if (variantBtn) {
+            const image = variantBtn.dataset.image;
+            const mainImage = document.getElementById('product-main-image');
+            if (mainImage && image) mainImage.src = image;
+            root.querySelectorAll('.product-variant-btn').forEach(b => b.classList.remove('is-active'));
+            variantBtn.classList.add('is-active');
+            return;
+        }
+
         const thumb = event.target.closest('.product-thumb');
         if (thumb) {
             const image = thumb.dataset.image;

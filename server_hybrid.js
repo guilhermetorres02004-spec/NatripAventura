@@ -8,14 +8,6 @@ const bcrypt = require('bcryptjs');
 
 const app = express();
 
-function normalizePrice(value) {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const normalized = String(value).trim().replace(',', '.');
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 // cPanel/GoDaddy geralmente executa atrás de proxy reverso.
 if (process.env.TRUST_PROXY !== '0') {
   app.set('trust proxy', 1);
@@ -202,7 +194,7 @@ if (USE_POSTGRES) {
           description TEXT,
           points TEXT,
           price DECIMAL(10,2),
-          coverImage TEXT,
+          coverImage VARCHAR(500),
           galleryImages TEXT,
           createdBy VARCHAR(255),
           createdAt VARCHAR(50)
@@ -211,7 +203,6 @@ if (USE_POSTGRES) {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_date ON trips(date)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_category ON trips(category)`);
       try { await db.run('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
-      try { await db.run('ALTER TABLE trips ALTER COLUMN coverImage TYPE TEXT'); } catch (e) { /* ignore if not needed */ }
 
       await db.run(`
         CREATE TABLE IF NOT EXISTS banners (
@@ -236,12 +227,16 @@ if (USE_POSTGRES) {
           price DECIMAL(10,2),
           stock INTEGER,
           image TEXT,
+          gallery TEXT,
+          variants TEXT,
           createdBy VARCHAR(255),
           createdAt VARCHAR(50)
         )
       `);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
+      try { await db.run('ALTER TABLE products ADD COLUMN gallery TEXT'); } catch (e) { /* ignore if exists */ }
+      try { await db.run('ALTER TABLE products ADD COLUMN variants TEXT'); } catch (e) { /* ignore if exists */ }
 
     } else {
       // SQLite schema
@@ -304,12 +299,16 @@ if (USE_POSTGRES) {
           price REAL,
           stock INTEGER,
           image TEXT,
+          gallery TEXT,
+          variants TEXT,
           createdBy TEXT,
           createdAt TEXT
         )
       `);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_products_createdAt ON products(createdAt)`);
+      try { await db.run('ALTER TABLE products ADD COLUMN gallery TEXT'); } catch (e) { /* ignore if exists */ }
+      try { await db.run('ALTER TABLE products ADD COLUMN variants TEXT'); } catch (e) { /* ignore if exists */ }
     }
 
     // Create admin user
@@ -416,24 +415,26 @@ app.post('/api/products/upsert', async (req, res) => {
       const price = (typeof p.price !== 'undefined' && p.price !== null && p.price !== '') ? parseFloat(p.price) : 0;
       const stock = Number.isFinite(p.stock) ? parseInt(p.stock, 10) : 0;
       const image = p.image || p.img || '';
+      const gallery = Array.isArray(p.gallery) ? JSON.stringify(p.gallery) : (p.gallery || '');
+      const variants = Array.isArray(p.variants) ? JSON.stringify(p.variants) : (p.variants || '');
       const createdBy = p.createdBy || '';
       const createdAt = p.createdAt || new Date().toISOString();
 
       if (p.id) {
         await db.run(
           SQL(
-            'UPDATE products SET name=$1, category=$2, price=$3, stock=$4, image=$5, createdBy=$6, createdAt=$7 WHERE id=$8',
-            'UPDATE products SET name=?, category=?, price=?, stock=?, image=?, createdBy=?, createdAt=? WHERE id=?'
+            'UPDATE products SET name=$1, category=$2, price=$3, stock=$4, image=$5, gallery=$6, variants=$7, createdBy=$8, createdAt=$9 WHERE id=$10',
+            'UPDATE products SET name=?, category=?, price=?, stock=?, image=?, gallery=?, variants=?, createdBy=?, createdAt=? WHERE id=?'
           ),
-          [name, category, price, stock, image, createdBy, createdAt, p.id]
+          [name, category, price, stock, image, gallery, variants, createdBy, createdAt, p.id]
         );
       } else {
         await db.run(
           SQL(
-            'INSERT INTO products (name, category, price, stock, image, createdBy, createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-            'INSERT INTO products (name, category, price, stock, image, createdBy, createdAt) VALUES (?,?,?,?,?,?,?)'
+            'INSERT INTO products (name, category, price, stock, image, gallery, variants, createdBy, createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+            'INSERT INTO products (name, category, price, stock, image, gallery, variants, createdBy, createdAt) VALUES (?,?,?,?,?,?,?,?,?)'
           ),
-          [name, category, price, stock, image, createdBy, createdAt]
+          [name, category, price, stock, image, gallery, variants, createdBy, createdAt]
         );
       }
     }
@@ -557,7 +558,7 @@ app.post('/api/trips/upsert', async (req, res) => {
         t.departureTime||'', t.returnTime||'', t.description||'',
         Array.isArray(t.points) ? JSON.stringify(t.points) : (t.points||''),
         Array.isArray(t.galleryImages) ? JSON.stringify(t.galleryImages) : (t.galleryImages||''),
-        normalizePrice(t.price), t.coverImage||'', t.createdBy||'', t.createdAt||''
+        t.price||null, t.coverImage||'', t.createdBy||'', t.createdAt||''
       ];
       
       if (t.id) {
