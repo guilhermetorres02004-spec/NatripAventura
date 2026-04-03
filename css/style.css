@@ -364,7 +364,7 @@ footer {
     stroke: #4f4f4f;
 }
 
-.perfil-card button {
+.perfil-card button:not([data-w-auto]):not([data-variant-remove]) {
     width: 100%;
     padding: 12px;
     border-radius: 10px;
@@ -376,7 +376,12 @@ footer {
     transition: transform 0.2s;
 }
 
-.perfil-card button:hover {
+/* Auto-width buttons inside perfil-card (e.g. variant remove, gallery remove) */
+.perfil-card button[data-w-auto] {
+    width: auto;
+}
+
+.perfil-card button:not([data-w-auto]):hover {
     transform: scale(1.03);
 }
 
