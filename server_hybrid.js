@@ -202,6 +202,7 @@ if (USE_POSTGRES) {
       `);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_date ON trips(date)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_category ON trips(category)`);
+      try { await db.run('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
 
       await db.run(`
         CREATE TABLE IF NOT EXISTS banners (

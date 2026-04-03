@@ -12,7 +12,8 @@
     "start": "node server_hybrid.js",
     "start:godaddy": "node server_hybrid.js",
     "start:postgres": "node server.js",
-    "start:mysql": "node server_mysql.js"
+    "start:mysql": "node server_mysql.js",
+    "migrate:pg:gallery-images": "node scripts/migrate_trip_gallery_images_pg.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

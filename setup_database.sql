@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS trips (
   points TEXT,
   price DECIMAL(10,2),
   coverImage VARCHAR(500),
+  galleryImages TEXT,
   createdBy VARCHAR(255),
   createdAt VARCHAR(50),
   INDEX idx_date (date),
