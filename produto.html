@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Produto | Natrip Aventura</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<section class="product-page">
+    <div id="product-detail" class="product-shell">
+        <div class="product-loading">Carregando produto...</div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 Natrip Aventura</p>
+</footer>
+
+<script src="js/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const root = document.getElementById('product-detail');
+    if (!root) return;
+
+    const CART_KEY = 'natrip_shop_cart';
+    const PRODUCT_DETAIL_KEY = 'natrip_shop_selected_product';
+    const params = new URLSearchParams(window.location.search);
+    const productId = params.get('id');
+
+    const fallbackProducts = [
+        { id: 'p1', name: 'Camiseta Natrip', price: 59.9, img: 'https://images.unsplash.com/photo-1520975917278-1a7a7f8c7f3a', category: 'camisas (masculino)', stock: 8 },
+        { id: 'p2', name: 'Caneca Natrip', price: 29.9, img: 'https://images.unsplash.com/photo-1526403224736-7e9d1b6b1b3f', category: 'souvenirs', stock: 12 },
+        { id: 'p3', name: 'Adesivo', price: 4.9, img: 'https://images.unsplash.com/photo-1525909002-7b9b6b5f8f3b', category: 'souvenirs', stock: 30 }
+    ];
+
+    function fmtBRL(v){
+        return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function normalizeProduct(p){
+        const id = p.id || p.productId || `p_${Date.now()}_${Math.random()}`;
+        const name = p.name || p.title || 'Produto';
+        const price = Number(p.price || p.unitPrice || 0);
+        const stock = Math.max(0, parseInt(p.stock, 10) || 0);
+        const img = p.img || p.image || 'https://images.unsplash.com/photo-1503602642458-232111445657';
+        const category = String(p.category || '').trim() || 'Sem categoria';
+        return { id: String(id), name, price, stock, img, category };
+    }
+
+    function buildProductNarrative(product){
+        const categoryLabel = String(product.category || 'colecao exclusiva').toLowerCase();
+        return [
+            `${product.name} faz parte da selecao ${categoryLabel} da Natrip e foi pensado para acompanhar trilhas, passeios e o dia a dia com identidade de viagem.`,
+            `A peca entrega visual limpo, compra direta e estoque exibido em tempo real para facilitar a escolha antes de finalizar o pedido.`,
+            `Ideal para quem quer levar um item da marca sem depender de atendimento manual no WhatsApp.`
+        ];
+    }
+
+    function buildHighlights(product){
+        return [
+            `Categoria: ${product.category}`,
+            `Disponibilidade atual: ${product.stock} unidade${product.stock === 1 ? '' : 's'}`,
+            'Compra online com envio e acompanhamento pelo fluxo da loja',
+            'Produto integrado ao carrinho da Natrip Aventuras'
+        ];
+    }
+
+    function saveSelectedProduct(product){
+        try {
+            localStorage.setItem(PRODUCT_DETAIL_KEY, JSON.stringify(product));
+        } catch (e) {}
+    }
+
+    function loadSelectedProduct(){
+        try {
+            const parsed = JSON.parse(localStorage.getItem(PRODUCT_DETAIL_KEY) || 'null');
+            return parsed ? normalizeProduct(parsed) : null;
+        } catch(e) {
+            return null;
+        }
+    }
+
+    function loadCart(){
+        try {
+            const raw = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+            return Array.isArray(raw) ? raw : [];
+        } catch(e) {
+            return [];
+        }
+    }
+
+    function saveCart(items){
+        localStorage.setItem(CART_KEY, JSON.stringify(items));
+    }
+
+    function addToCart(item){
+        const cart = loadCart();
+        const existing = cart.find(entry => String(entry.id) === String(item.id));
+        if (existing) existing.qty = Number(existing.qty || 1) + 1;
+        else cart.push({ ...item, qty: 1, addedAt: new Date().toISOString() });
+        saveCart(cart);
+    }
+
+    function buyNow(item){
+        const checkoutItem = {
+            city: 'Loja',
+            name: item.name,
+            productId: item.id,
+            qty: 1,
+            unitPrice: item.price,
+            totalValue: parseFloat(item.price)
+        };
+        localStorage.setItem('natrip_checkout_item', JSON.stringify(checkoutItem));
+        window.location.href = 'entrega.html';
+    }
+
+    async function loadProducts(){
+        try {
+            const response = await fetch('/api/products');
+            if (response.ok) {
+                const data = await response.json();
+                if (Array.isArray(data) && data.length) return data.map(normalizeProduct);
+            }
+        } catch (e) {}
+        return fallbackProducts.map(normalizeProduct);
+    }
+
+    function renderNotFound(){
+        root.innerHTML = `
+            <div class="product-empty-state">
+                <h1>Produto nao encontrado</h1>
+                <p>O item selecionado nao esta disponivel ou o link usado nao corresponde a um produto valido.</p>
+                <a class="shop-btn shop-btn-primary product-empty-link" href="shop.html">Voltar para a loja</a>
+            </div>
+        `;
+    }
+
+    function renderProduct(product){
+        const highlights = buildHighlights(product);
+        const narrative = buildProductNarrative(product);
+        const installPrice = (Number(product.price || 0) / 3).toFixed(2).replace('.', ',');
+        const imageSet = [product.img, product.img, product.img];
+
+        document.title = `${product.name} | Natrip Aventura`;
+        root.innerHTML = `
+            <nav class="product-breadcrumbs" aria-label="Breadcrumb">
+                <a href="index.html">Início</a>
+                <span>/</span>
+                <a href="shop.html">Shop</a>
+                <span>/</span>
+                <strong>${product.name}</strong>
+            </nav>
+
+            <div class="product-layout">
+                <section class="product-gallery-panel">
+                    <div class="product-thumb-list">
+                        ${imageSet.map((image, index) => `
+                            <button class="product-thumb ${index === 0 ? 'is-active' : ''}" type="button" data-image="${image}" aria-label="Ver imagem ${index + 1} do produto">
+                                <img src="${image}" alt="Miniatura ${index + 1} de ${product.name}">
+                            </button>
+                        `).join('')}
+                    </div>
+                    <div class="product-main-media">
+                        <div class="product-main-tag">Loja oficial Natrip</div>
+                        <img id="product-main-image" class="product-main-image" src="${product.img}" alt="${product.name}">
+                    </div>
+                </section>
+
+                <section class="product-info-panel">
+                    <div class="product-info-copy">
+                        <span class="product-badge">${product.category}</span>
+                        <h1>${product.name}</h1>
+                        <div class="product-rating-row">
+                            <span class="product-rating-score">4.9</span>
+                            <span class="product-rating-stars">★★★★★</span>
+                            <span class="product-rating-count">(132 avaliações)</span>
+                        </div>
+                        <div class="product-pricing-block">
+                            <div class="product-price">${fmtBRL(product.price)}</div>
+                            <div class="product-installments">ou 3x de R$ ${installPrice} sem juros</div>
+                        </div>
+                        <p class="product-short-copy">Produto publicado na loja da Natrip Aventuras com checkout direto, estoque visível e acesso imediato ao carrinho.</p>
+                    </div>
+
+                    <aside class="product-purchase-box">
+                        <div class="product-stock-banner ${product.stock > 0 ? 'is-available' : 'is-unavailable'}">
+                            ${product.stock > 0 ? `Disponível agora: ${product.stock} unidade${product.stock === 1 ? '' : 's'}` : 'Produto indisponível no momento'}
+                        </div>
+                        <button class="shop-btn shop-btn-primary product-buy-btn" data-action="buy" ${product.stock === 0 ? 'disabled' : ''}>Comprar agora</button>
+                        <button class="shop-btn shop-btn-secondary product-cart-btn" data-action="add" ${product.stock === 0 ? 'disabled' : ''}>Adicionar ao carrinho</button>
+                        <a class="product-cart-link" href="carrinho.html">Ver carrinho</a>
+                    </aside>
+
+                    <section class="product-detail-block">
+                        <h2>O que voce precisa saber sobre este produto</h2>
+                        <ul>
+                            ${highlights.map(item => `<li>${item}</li>`).join('')}
+                        </ul>
+                    </section>
+
+                    <section class="product-detail-block product-story-block">
+                        <h2>Sobre este produto</h2>
+                        ${narrative.map(text => `<p>${text}</p>`).join('')}
+                    </section>
+                </section>
+            </div>
+        `;
+    }
+
+    const selectedFromStorage = loadSelectedProduct();
+    const products = await loadProducts();
+    const product = products.find(item => String(item.id) === String(productId || ''))
+        || (selectedFromStorage && products.find(item => String(item.id) === String(selectedFromStorage.id)))
+        || selectedFromStorage;
+
+    if (!product) {
+        renderNotFound();
+        return;
+    }
+
+    saveSelectedProduct(product);
+    renderProduct(product);
+
+    root.addEventListener('click', (event) => {
+        const thumb = event.target.closest('.product-thumb');
+        if (thumb) {
+            const image = thumb.dataset.image;
+            const mainImage = document.getElementById('product-main-image');
+            if (mainImage && image) mainImage.src = image;
+            root.querySelectorAll('.product-thumb').forEach(button => button.classList.remove('is-active'));
+            thumb.classList.add('is-active');
+            return;
+        }
+
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        if (button.dataset.action === 'add') {
+            addToCart(product);
+            button.textContent = 'Adicionado ao carrinho';
+            setTimeout(() => { button.textContent = 'Adicionar ao carrinho'; }, 1200);
+            return;
+        }
+        if (button.dataset.action === 'buy') {
+            buyNow(product);
+        }
+    });
+});
+</script>
+</body>
+</html>

@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!container) return;
 
     const CART_KEY = 'natrip_shop_cart';
+    const PRODUCT_DETAIL_KEY = 'natrip_shop_selected_product';
     let normalizedProducts = [];
     const BASE_CATEGORIES = [
         'camisas (masculino)',
@@ -83,6 +84,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             map.set(p.id, p);
         });
         return Array.from(map.values());
+    }
+
+    function productDetailHref(product){
+        return `produto.html?id=${encodeURIComponent(product.id)}`;
+    }
+
+    function rememberSelectedProduct(product){
+        try {
+            localStorage.setItem(PRODUCT_DETAIL_KEY, JSON.stringify(product));
+        } catch (e) {}
+    }
+
+    function openProductDetail(product){
+        rememberSelectedProduct(product);
+        window.location.href = productDetailHref(product);
     }
 
     function categoryRank(category){
@@ -140,9 +156,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <h2 style="font-size:1.1rem;color:#333;margin:0 0 10px;">${category}</h2>
                 <div class="shop-grid">
                     ${items.map(p => `
-                        <div class="shop-card">
+                        <article class="shop-card" data-id="${p.id}" tabindex="0" role="link" aria-label="Abrir detalhes de ${p.name}">
                             <img class="shop-card-image" src="${p.img}" alt="${p.name}" />
                             <div class="shop-card-content">
+                                <div class="shop-card-meta">
+                                    <span class="shop-card-category">${p.category}</span>
+                                    <a class="shop-card-link" href="${productDetailHref(p)}" data-link-id="${p.id}">Ver produto</a>
+                                </div>
                                 <div class="shop-card-price">${fmtBRL(p.price)}</div>
                                 <h3 class="shop-card-name">${p.name}</h3>
                                 <div style="display:inline-block;margin:4px 0 10px;padding:4px 10px;border-radius:999px;background:#fff3e8;color:#C85F00;font-weight:700;font-size:0.9rem;">Estoque: ${p.stock}</div>
@@ -151,7 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     <button class="shop-btn shop-btn-primary" data-action="buy" data-id="${p.id}">Comprar</button>
                                 </div>
                             </div>
-                        </div>
+                        </article>
                     `).join('')}
                 </div>
             </section>
@@ -161,23 +181,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     await renderProducts();
 
     container.addEventListener('click', (ev) => {
-        const btn = ev.target.closest('button[data-action]');
-        if (!btn) return;
-        const id = btn.dataset.id;
-        const action = btn.dataset.action;
-        const product = normalizedProducts.find(p => String(p.id) === String(id));
-        if (!product) return;
-
-        if (action === 'add') {
-            addToCart(product);
-            btn.textContent = 'Adicionado';
-            setTimeout(() => { btn.textContent = 'Adicionar ao carrinho'; }, 1200);
+        const link = ev.target.closest('a[data-link-id]');
+        if (link) {
+            const product = normalizedProducts.find(p => String(p.id) === String(link.dataset.linkId));
+            if (product) rememberSelectedProduct(product);
             return;
         }
 
-        if (action === 'buy') {
-            buyNow(product);
+        const btn = ev.target.closest('button[data-action]');
+        if (btn) {
+            const id = btn.dataset.id;
+            const action = btn.dataset.action;
+            const product = normalizedProducts.find(p => String(p.id) === String(id));
+            if (!product) return;
+
+            if (action === 'add') {
+                addToCart(product);
+                btn.textContent = 'Adicionado';
+                setTimeout(() => { btn.textContent = 'Adicionar ao carrinho'; }, 1200);
+                return;
+            }
+
+            if (action === 'buy') {
+                buyNow(product);
+            }
+            return;
         }
+
+        const card = ev.target.closest('.shop-card[data-id]');
+        if (!card) return;
+        const product = normalizedProducts.find(p => String(p.id) === String(card.dataset.id));
+        if (product) openProductDetail(product);
+    });
+
+    container.addEventListener('keydown', (ev) => {
+        const card = ev.target.closest('.shop-card[data-id]');
+        if (!card) return;
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        ev.preventDefault();
+        const product = normalizedProducts.find(p => String(p.id) === String(card.dataset.id));
+        if (product) openProductDetail(product);
     });
 });
 </script>
