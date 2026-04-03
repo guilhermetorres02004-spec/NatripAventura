@@ -9,6 +9,14 @@ const bcrypt = require('bcryptjs');
 
 const app = express();
 
+function normalizePrice(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const normalized = String(value).trim().replace(',', '.');
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // cPanel/GoDaddy geralmente executa atrás de proxy reverso.
 if (process.env.TRUST_PROXY !== '0') {
   app.set('trust proxy', 1);
@@ -133,7 +141,7 @@ testDbConnection();
         description TEXT,
         points TEXT,
         price DECIMAL(10,2),
-        coverImage VARCHAR(500),
+        coverImage TEXT,
         galleryImages TEXT,
         createdBy VARCHAR(255),
         createdAt VARCHAR(50)
@@ -159,6 +167,7 @@ testDbConnection();
 
     // Add galleryImages if table already exists
     try { await client.query('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
+    try { await client.query('ALTER TABLE trips ALTER COLUMN coverImage TYPE TEXT'); } catch (e) { /* ignore if not needed */ }
 
     // Create banners table
     await client.query(`
@@ -462,7 +471,7 @@ app.post('/api/trips/upsert', async (req, res) => {
       if (Array.isArray(t.points)) pointsVal = JSON.stringify(t.points);
       else if (typeof t.points === 'string') pointsVal = t.points;
       else pointsVal = '';
-      const price = (typeof t.price !== 'undefined' && t.price !== null && t.price !== '') ? parseFloat(t.price) : null;
+      const price = normalizePrice(t.price);
       
       if (t.id) {
         await pool.query(

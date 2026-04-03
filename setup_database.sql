@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS trips (
   description TEXT,
   points TEXT,
   price DECIMAL(10,2),
-  coverImage VARCHAR(500),
+  coverImage TEXT,
   galleryImages TEXT,
   createdBy VARCHAR(255),
   createdAt VARCHAR(50),

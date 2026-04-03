@@ -23,12 +23,14 @@ async function main() {
     );
 
     if (existsResult.rowCount > 0) {
-      console.log('Coluna galleryImages ja existe em trips. Nada para fazer.');
-      return;
+      console.log('Coluna galleryImages ja existe em trips.');
+    } else {
+      await pool.query('ALTER TABLE trips ADD COLUMN galleryImages TEXT');
+      console.log('Coluna galleryImages adicionada com sucesso na tabela trips.');
     }
 
-    await pool.query('ALTER TABLE trips ADD COLUMN galleryImages TEXT');
-    console.log('Coluna galleryImages adicionada com sucesso na tabela trips.');
+    await pool.query('ALTER TABLE trips ALTER COLUMN coverImage TYPE TEXT');
+    console.log('Coluna coverImage ajustada para TEXT na tabela trips.');
   } finally {
     await pool.end();
   }

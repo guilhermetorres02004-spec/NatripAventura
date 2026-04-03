@@ -8,6 +8,14 @@ const bcrypt = require('bcryptjs');
 
 const app = express();
 
+function normalizePrice(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const normalized = String(value).trim().replace(',', '.');
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // cPanel/GoDaddy geralmente executa atrás de proxy reverso.
 if (process.env.TRUST_PROXY !== '0') {
   app.set('trust proxy', 1);
@@ -194,7 +202,7 @@ if (USE_POSTGRES) {
           description TEXT,
           points TEXT,
           price DECIMAL(10,2),
-          coverImage VARCHAR(500),
+          coverImage TEXT,
           galleryImages TEXT,
           createdBy VARCHAR(255),
           createdAt VARCHAR(50)
@@ -203,6 +211,7 @@ if (USE_POSTGRES) {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_date ON trips(date)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_category ON trips(category)`);
       try { await db.run('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
+      try { await db.run('ALTER TABLE trips ALTER COLUMN coverImage TYPE TEXT'); } catch (e) { /* ignore if not needed */ }
 
       await db.run(`
         CREATE TABLE IF NOT EXISTS banners (
@@ -548,7 +557,7 @@ app.post('/api/trips/upsert', async (req, res) => {
         t.departureTime||'', t.returnTime||'', t.description||'',
         Array.isArray(t.points) ? JSON.stringify(t.points) : (t.points||''),
         Array.isArray(t.galleryImages) ? JSON.stringify(t.galleryImages) : (t.galleryImages||''),
-        t.price||null, t.coverImage||'', t.createdBy||'', t.createdAt||''
+        normalizePrice(t.price), t.coverImage||'', t.createdBy||'', t.createdAt||''
       ];
       
       if (t.id) {
