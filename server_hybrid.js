@@ -422,7 +422,7 @@ app.get('/api/users', async (req, res) => {
 // Products
 app.get('/api/products', async (req, res) => {
   try {
-    const rows = await db.all('SELECT * FROM products ORDER BY COALESCE(createdAt, "") DESC');
+    const rows = await db.all("SELECT * FROM products ORDER BY COALESCE(createdAt, '') DESC");
     const parsed = (rows || []).map(r => {
       r = {
         ...r,
