@@ -28,7 +28,8 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
-app.use(bodyParser.json({ limit: '10mb' }));
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '50mb';
+app.use(bodyParser.json({ limit: JSON_BODY_LIMIT }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -534,7 +535,11 @@ app.get('/api/trips', async (req, res) => {
         r.galleryImages = r.galleryImages ? JSON.parse(r.galleryImages) : [];
       } catch(e) {
         if (typeof r.galleryImages === 'string' && r.galleryImages.trim()) {
-          r.galleryImages = r.galleryImages.split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean);
+          const rawGallery = r.galleryImages.trim();
+          const byLine = rawGallery.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+          r.galleryImages = (byLine.length > 1 || /^data:/i.test(rawGallery))
+            ? byLine
+            : rawGallery.split(',').map(s=>s.trim()).filter(Boolean);
         } else r.galleryImages = [];
       }
 

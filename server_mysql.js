@@ -22,7 +22,8 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
-app.use(bodyParser.json());
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '50mb';
+app.use(bodyParser.json({ limit: JSON_BODY_LIMIT }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -125,7 +126,8 @@ testDbConnection();
         description TEXT,
         points TEXT,
         price DECIMAL(10,2),
-        coverImage VARCHAR(500),
+        coverImage LONGTEXT,
+        galleryImages LONGTEXT,
         createdBy VARCHAR(255),
         createdAt VARCHAR(50),
         INDEX idx_date (date),
@@ -140,7 +142,7 @@ testDbConnection();
         title VARCHAR(255),
         subtitle VARCHAR(255),
         category VARCHAR(100),
-        image VARCHAR(500),
+        image LONGTEXT,
         link VARCHAR(500),
         orderIndex INT,
         createdBy VARCHAR(255),
@@ -148,6 +150,9 @@ testDbConnection();
         INDEX idx_order (orderIndex)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    try { await connection.query('ALTER TABLE trips ADD COLUMN galleryImages LONGTEXT NULL'); } catch (e) { /* ignore if exists */ }
+    try { await connection.query('ALTER TABLE trips MODIFY COLUMN coverImage LONGTEXT'); } catch (e) { /* ignore if exists */ }
+    try { await connection.query('ALTER TABLE banners MODIFY COLUMN image LONGTEXT'); } catch (e) { /* ignore if exists */ }
 
     // Create admin user if it doesn't exist
     const adminEmail = 'admin@natrip.local';
@@ -173,7 +178,7 @@ testDbConnection();
 // trips endpoints
 app.get('/api/trips', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id,city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt FROM trips ORDER BY date');
+    const [rows] = await pool.query('SELECT id,city,date,category,seats,departureTime,returnTime,description,points,galleryImages,price,coverImage,createdBy,createdAt FROM trips ORDER BY date');
     const parsed = (rows||[]).map(r => {
       try {
         r.points = r.points ? JSON.parse(r.points) : [];
@@ -181,6 +186,17 @@ app.get('/api/trips', async (req, res) => {
         if (typeof r.points === 'string' && r.points.trim()) {
           r.points = r.points.split(/\r?\n|,/) .map(s=>s.trim()).filter(Boolean);
         } else r.points = [];
+      }
+      try {
+        r.galleryImages = r.galleryImages ? JSON.parse(r.galleryImages) : [];
+      } catch(e) {
+        if (typeof r.galleryImages === 'string' && r.galleryImages.trim()) {
+          const rawGallery = r.galleryImages.trim();
+          const byLine = rawGallery.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+          r.galleryImages = (byLine.length > 1 || /^data:/i.test(rawGallery))
+            ? byLine
+            : rawGallery.split(',').map(s=>s.trim()).filter(Boolean);
+        } else r.galleryImages = [];
       }
       return r;
     });
@@ -203,6 +219,7 @@ app.post('/api/trips/upsert', async (req, res) => {
       const desc = t.description || t.desc || '';
       const category = t.category || '';
       const cover = t.coverImage || '';
+      const gallery = Array.isArray(t.galleryImages) ? JSON.stringify(t.galleryImages) : (t.galleryImages || '');
       let pointsVal = '';
       if (Array.isArray(t.points)) pointsVal = JSON.stringify(t.points);
       else if (typeof t.points === 'string') pointsVal = t.points;
@@ -211,13 +228,13 @@ app.post('/api/trips/upsert', async (req, res) => {
       
       if (t.id) {
         await pool.query(
-          'UPDATE trips SET city=?, date=?, category=?, seats=?, departureTime=?, returnTime=?, description=?, points=?, price=?, coverImage=?, createdBy=?, createdAt=? WHERE id=?',
-          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'', t.id]
+          'UPDATE trips SET city=?, date=?, category=?, seats=?, departureTime=?, returnTime=?, description=?, points=?, galleryImages=?, price=?, coverImage=?, createdBy=?, createdAt=? WHERE id=?',
+          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, gallery, price, cover, t.createdBy||'', t.createdAt||'', t.id]
         );
       } else {
         await pool.query(
-          'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,price,coverImage,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, price, cover, t.createdBy||'', t.createdAt||'']
+          'INSERT INTO trips (city,date,category,seats,departureTime,returnTime,description,points,galleryImages,price,coverImage,createdBy,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [t.city||'', t.date||'', category, t.seats||0, dep, ret, desc, pointsVal, gallery, price, cover, t.createdBy||'', t.createdAt||'']
         );
       }
     }

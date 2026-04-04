@@ -250,7 +250,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const parsed = JSON.parse(trip.galleryImages);
                     if (Array.isArray(parsed)) galleryRaw.push(...parsed);
                 } catch {
-                    galleryRaw.push(...trip.galleryImages.split(/\r?\n|,/));
+                    const rawGallery = trip.galleryImages.trim();
+                    const byLine = rawGallery.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+                    galleryRaw.push(...((byLine.length > 1 || /^data:/i.test(rawGallery))
+                        ? byLine
+                        : rawGallery.split(',').map(item => item.trim()).filter(Boolean)));
                 }
             }
             const gallery = galleryRaw.map(normalizeImg).filter(Boolean);

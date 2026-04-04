@@ -69,7 +69,13 @@
                         if (Array.isArray(trip.galleryImages)) list.push(...trip.galleryImages);
                         else if (typeof trip.galleryImages === 'string' && trip.galleryImages.trim()) {
                             try { const parsed = JSON.parse(trip.galleryImages); if (Array.isArray(parsed)) list.push(...parsed); }
-                            catch { list.push(...trip.galleryImages.split(/\r?\n/)); }
+                            catch {
+                                const rawGallery = trip.galleryImages.trim();
+                                const byLine = rawGallery.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+                                list.push(...((byLine.length > 1 || /^data:/i.test(rawGallery))
+                                    ? byLine
+                                    : rawGallery.split(',').map(item => item.trim()).filter(Boolean)));
+                            }
                         }
                         return list.map(normalizeImg).filter(Boolean);
                     }
