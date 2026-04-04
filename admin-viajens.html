@@ -238,19 +238,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function uploadImg(file, maxW, quality){
-        const data = await compressImg(file, maxW, quality);
-        try {
-            const r = await fetch('/api/upload-image', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data })
-            });
-            if (r.ok) {
-                const json = await r.json();
-                if (json.url) return json.url;
-            }
-        } catch(e) { console.warn('Upload para servidor falhou, usando base64:', e); }
-        return data;
+        // Armazena base64 diretamente no banco (funciona em qualquer plataforma, inclusive Render)
+        return compressImg(file, maxW, quality);
     }
 
     function initCoverPreview(){
@@ -265,9 +254,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const data = await uploadImg(f, 1280, 0.82);
                     if (coverUrlInput) coverUrlInput.value = data;
-                    const preview = data.startsWith('data:') ? data : data;
-                    if (coverPreview){ coverPreview.src = preview; coverPreview.style.display='inline-block'; }
-                    if (coverStatus) coverStatus.textContent = data.startsWith('/img/') ? 'Imagem salva ✓' : `Imagem pronta (${Math.round(data.length/1024)} KB)`;
+                    if (coverPreview){ coverPreview.src = data; coverPreview.style.display='inline-block'; }
+                    if (coverStatus) coverStatus.textContent = `Imagem pronta (${Math.round(data.length/1024)} KB)`;
                 } catch(err) {
                     if (coverStatus) coverStatus.textContent = 'Erro ao processar imagem';
                     console.error('compressImg cover error', err);
