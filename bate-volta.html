@@ -62,6 +62,7 @@
                     const r = await fetch('/api/trips'); if (!r.ok) return; const all = await r.json();
                     const trips = (all||[]).filter(t=>t.category==='bate-volta');
                     if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
+                    console.log('[NaTrip bate-volta] trips:', trips.map(t=>({city:t.city,hasCover:!!t.coverImage,coverLen:t.coverImage?.length||0,galleryLen:(t.galleryImages||[]).length})));
                     function normalizeImg(u){ if (!u) return ''; const s = (u||'').toString(); const n = (/^(data:|https?:|\/)/i).test(s) ? s : ('/' + s); return n.replace(/'/g, "\\'"); }
                     function collectImages(trip){
                         const list = [];
@@ -108,7 +109,7 @@
                         a.appendChild(inner);
                         container.appendChild(a);
                     });
-                } catch(e) {}
+                } catch(e) { console.error('[NaTrip bate-volta] render error', e); }
             };
             renderCategoryTrips();
             window.addEventListener('storage', (e)=>{ if (e.key === 'natrip_admin_trips_updated_at') renderCategoryTrips(); });

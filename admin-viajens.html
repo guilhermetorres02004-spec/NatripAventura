@@ -73,10 +73,11 @@
                 <textarea id="trip-points" rows="3" placeholder="Ex: Mirante\nTrilha curta\nCachoeira" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;"></textarea>
             </div>
             <div class="form-field" style="width:100%;">
-                <label for="trip-cover-url">Capa (URL)</label>
-                <input id="trip-cover-url" type="url" placeholder="https://.../imagem.jpg" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;" />
+                <label for="trip-cover-url">Capa (URL ou arquivo)</label>
+                <input id="trip-cover-url" type="text" placeholder="https://.../imagem.jpg" style="padding:8px;border-radius:8px;border:1px solid #ddd;width:100%;" />
                 <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
                     <input id="trip-cover-file" type="file" accept="image/*" style="flex:0 0 auto;" />
+                    <span id="trip-cover-status" style="font-size:0.8rem;color:#888;"></span>
                     <img id="trip-cover-preview" src="" alt="Preview" style="width:96px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #ddd;display:none;" />
                 </div>
             </div>
@@ -240,12 +241,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const coverFileEl = document.getElementById('trip-cover-file');
         const coverPreview = document.getElementById('trip-cover-preview');
         const coverUrlInput = document.getElementById('trip-cover-url');
+        const coverStatus = document.getElementById('trip-cover-status');
         if (coverFileEl) {
             coverFileEl.addEventListener('change', async (e)=>{
                 const f = e.target.files && e.target.files[0]; if (!f) return;
-                const data = await compressImg(f, 1280, 0.82);
-                if (coverUrlInput) coverUrlInput.value = data;
-                if (coverPreview){ coverPreview.src = data; coverPreview.style.display='inline-block'; }
+                if (coverStatus) coverStatus.textContent = 'Comprimindo...';
+                try {
+                    const data = await compressImg(f, 1280, 0.82);
+                    if (coverUrlInput) coverUrlInput.value = data;
+                    if (coverPreview){ coverPreview.src = data; coverPreview.style.display='inline-block'; }
+                    if (coverStatus) coverStatus.textContent = `Imagem pronta (${Math.round(data.length/1024)} KB)`;
+                } catch(err) {
+                    if (coverStatus) coverStatus.textContent = 'Erro ao processar imagem';
+                    console.error('compressImg cover error', err);
+                }
             });
         }
         if (coverUrlInput) {
@@ -381,6 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const departure = document.getElementById('trip-departure') ? document.getElementById('trip-departure').value : '';
                 const departureAddress = document.getElementById('trip-departure-address') ? document.getElementById('trip-departure-address').value.trim() : '';
                 const cover = document.getElementById('trip-cover-url') ? document.getElementById('trip-cover-url').value.trim() : '';
+                console.log('[NaTrip] Criando viagem:', { city, coverLen: cover.length, coverPrefix: cover.slice(0,30) || '(vazio)' });
                 const ret = document.getElementById('trip-return') ? document.getElementById('trip-return').value : '';
                 const desc = document.getElementById('trip-desc') ? document.getElementById('trip-desc').value.trim() : '';
                 const pointsRaw = document.getElementById('trip-points') ? document.getElementById('trip-points').value.trim() : '';
@@ -393,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newTrip = { city, date, category, departureTime: departure, departureAddress, returnTime: ret, description: desc, points, galleryImages, seats, price: priceVal, coverImage: cover, createdBy: current.email, createdAt: new Date().toISOString() };
                 try {
                     const r = await fetch('/api/trips/upsert', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ trips: [newTrip] }) });
-                    if (!r.ok) return alert('Falha ao criar viagem.');
+                    if (!r.ok) { const errText = await r.text().catch(()=>''); console.error('[NaTrip] Falha upsert:', r.status, errText); return alert(`Falha ao criar viagem (${r.status}).`); }
                     // notify other tabs
                     try { localStorage.setItem('natrip_admin_trips_updated_at', new Date().toISOString()); } catch(e){}
                     showAdminToast('Viagem criada com sucesso'); resetForm(); await render();
