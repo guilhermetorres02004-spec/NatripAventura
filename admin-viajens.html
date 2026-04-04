@@ -237,6 +237,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    async function uploadImg(file, maxW, quality){
+        const data = await compressImg(file, maxW, quality);
+        try {
+            const r = await fetch('/api/upload-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ data })
+            });
+            if (r.ok) {
+                const json = await r.json();
+                if (json.url) return json.url;
+            }
+        } catch(e) { console.warn('Upload para servidor falhou, usando base64:', e); }
+        return data;
+    }
+
     function initCoverPreview(){
         const coverFileEl = document.getElementById('trip-cover-file');
         const coverPreview = document.getElementById('trip-cover-preview');
@@ -245,12 +261,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (coverFileEl) {
             coverFileEl.addEventListener('change', async (e)=>{
                 const f = e.target.files && e.target.files[0]; if (!f) return;
-                if (coverStatus) coverStatus.textContent = 'Comprimindo...';
+                if (coverStatus) coverStatus.textContent = 'Enviando imagem...';
                 try {
-                    const data = await compressImg(f, 1280, 0.82);
+                    const data = await uploadImg(f, 1280, 0.82);
                     if (coverUrlInput) coverUrlInput.value = data;
-                    if (coverPreview){ coverPreview.src = data; coverPreview.style.display='inline-block'; }
-                    if (coverStatus) coverStatus.textContent = `Imagem pronta (${Math.round(data.length/1024)} KB)`;
+                    const preview = data.startsWith('data:') ? data : data;
+                    if (coverPreview){ coverPreview.src = preview; coverPreview.style.display='inline-block'; }
+                    if (coverStatus) coverStatus.textContent = data.startsWith('/img/') ? 'Imagem salva ✓' : `Imagem pronta (${Math.round(data.length/1024)} KB)`;
                 } catch(err) {
                     if (coverStatus) coverStatus.textContent = 'Erro ao processar imagem';
                     console.error('compressImg cover error', err);
@@ -295,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fileEl.addEventListener('change', async (e)=>{
                 const files = Array.from(e.target.files || []);
                 if (!files.length) return;
-                const collected = await Promise.all(files.map(f => compressImg(f, 1280, 0.82)));
+                const collected = await Promise.all(files.map(f => uploadImg(f, 1280, 0.82)));
                 appendUrls(collected);
             });
         }

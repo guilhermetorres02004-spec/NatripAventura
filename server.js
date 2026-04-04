@@ -6,6 +6,7 @@ const cors = require('cors');
 const fetch = global.fetch || require('node-fetch');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
 
 const app = express();
 
@@ -57,6 +58,28 @@ app.get('/favicon.ico', (req, res) => res.sendStatus(204));
 
 // Servir arquivos estáticos (HTML/CSS/JS) a partir da raiz do projeto
 app.use(express.static(path.join(__dirname)));
+
+// ============================================================
+// Upload de imagem: salva em img/uploads/ e devolve URL relativa
+// ============================================================
+app.post('/api/upload-image', (req, res) => {
+  try {
+    const { data } = req.body || {};
+    if (!data || typeof data !== 'string') return res.status(400).json({ error: 'Dados ausentes' });
+    const m = data.match(/^data:image\/(png|jpe?g|gif|webp);base64,([A-Za-z0-9+/=]+)$/i);
+    if (!m) return res.status(400).json({ error: 'Formato inválido' });
+    const ext = m[1].toLowerCase().replace('jpeg','jpg');
+    const buffer = Buffer.from(m[2], 'base64');
+    const filename = `img_${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const uploadDir = path.join(__dirname, 'img', 'uploads');
+    fs.mkdirSync(uploadDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadDir, filename), buffer);
+    res.json({ url: `/img/uploads/${filename}` });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Erro ao salvar imagem' });
+  }
+});
 
 // PostgreSQL connection pool
 const NORMALIZED_DATABASE_URL = (process.env.DATABASE_URL || '').trim().replace(/^['\"]|['\"]$/g, '');
