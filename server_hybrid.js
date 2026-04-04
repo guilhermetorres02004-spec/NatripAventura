@@ -423,7 +423,32 @@ app.get('/api/users', async (req, res) => {
 app.get('/api/products', async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM products ORDER BY COALESCE(createdAt, "") DESC');
-    res.json(rows || []);
+    const parsed = (rows || []).map(r => {
+      r = {
+        ...r,
+        createdBy: r.createdBy ?? r.createdby ?? '',
+        createdAt: r.createdAt ?? r.createdat ?? ''
+      };
+
+      try {
+        r.gallery = r.gallery ? JSON.parse(r.gallery) : [];
+      } catch (e) {
+        r.gallery = Array.isArray(r.gallery) ? r.gallery : [];
+      }
+
+      try {
+        r.variants = r.variants ? JSON.parse(r.variants) : [];
+      } catch (e) {
+        r.variants = Array.isArray(r.variants) ? r.variants : [];
+      }
+
+      if (!r.image && Array.isArray(r.gallery) && r.gallery.length) {
+        r.image = r.gallery[0];
+      }
+
+      return r;
+    });
+    res.json(parsed);
   } catch (err) {
     console.error('Error fetching products:', err);
     res.status(500).json({ error: 'Erro ao ler produtos' });

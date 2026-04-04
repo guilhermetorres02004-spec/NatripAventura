@@ -156,7 +156,10 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ products: items })
         });
-        if (!resp.ok) throw new Error('Falha ao salvar produtos');
+        if (!resp.ok) {
+            const errText = await resp.text().catch(()=>'');
+            throw new Error(errText || 'Falha ao salvar produtos');
+        }
     }
 
     async function deleteProduct(id){
@@ -170,6 +173,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatBRL(v){
         return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function compressImg(file, maxW, quality){
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(reader.error || new Error('Falha ao ler imagem'));
+            reader.onload = e => {
+                const img = new Image();
+                img.onerror = () => reject(new Error('Falha ao processar imagem'));
+                img.onload = () => {
+                    let w = img.width, h = img.height;
+                    if (w > maxW) {
+                        h = Math.round(h * maxW / w);
+                        w = maxW;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
     }
 
     async function renderProducts(){
@@ -253,15 +281,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (selectedVariants[index]) selectedVariants[index].label = labelInput.value;
         });
         const imgInput = div.querySelector('[data-variant-img]');
-        imgInput.addEventListener('change', (e) => {
+        imgInput.addEventListener('change', async (e) => {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-                if (selectedVariants[index]) selectedVariants[index].image = String(reader.result || '');
+            try {
+                const data = await compressImg(file, 1280, 0.82);
+                if (selectedVariants[index]) selectedVariants[index].image = data;
                 renderVariants();
-            };
-            reader.readAsDataURL(file);
+            } catch (err) {
+                msg.style.color = '#c33';
+                msg.textContent = 'Erro ao processar a imagem do modelo.';
+            }
         });
         return div;
     }
@@ -283,22 +313,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function initGalleryUpload(){
         const input = document.getElementById('product-gallery-input');
         if (!input) return;
-        input.addEventListener('change', (e) => {
+        input.addEventListener('change', async (e) => {
             const files = Array.from(e.target.files || []);
             if (!files.length) return;
-            let loaded = 0;
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    selectedGalleryImages.push(String(reader.result || ''));
-                    loaded++;
-                    if (loaded === files.length) {
-                        renderGalleryPreview();
-                        input.value = '';
-                    }
-                };
-                reader.readAsDataURL(file);
-            });
+            try {
+                const images = await Promise.all(files.map(file => compressImg(file, 1280, 0.82)));
+                selectedGalleryImages.push(...images.filter(Boolean));
+                renderGalleryPreview();
+            } catch (err) {
+                msg.style.color = '#c33';
+                msg.textContent = 'Erro ao processar as imagens do produto.';
+            } finally {
+                input.value = '';
+            }
         });
     }
 
@@ -388,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 msg.textContent = 'Produto cadastrado com sucesso!';
             } catch (e) {
                 msg.style.color = '#c33';
-                msg.textContent = 'Erro ao salvar produto no servidor.';
+                msg.textContent = e && e.message ? e.message : 'Erro ao salvar produto no servidor.';
             }
         });
 
