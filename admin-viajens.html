@@ -217,15 +217,35 @@ document.addEventListener('DOMContentLoaded', () => {
         listEl.querySelectorAll('.remove-trip').forEach(b=>b.addEventListener('click', async ev=>{ const id=ev.currentTarget.dataset.id; const ok=await deleteTrip(id); if(ok) render(); else alert('Falha ao remover viagem.'); }));
     }
 
+    function compressImg(file, maxW, quality){
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    let w = img.width, h = img.height;
+                    if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
     function initCoverPreview(){
         const coverFileEl = document.getElementById('trip-cover-file');
         const coverPreview = document.getElementById('trip-cover-preview');
         const coverUrlInput = document.getElementById('trip-cover-url');
         if (coverFileEl) {
-            coverFileEl.addEventListener('change', (e)=>{
-                const f = e.target.files && e.target.files[0]; if (!f) return; const reader = new FileReader();
-                reader.onload = ()=>{ const data = reader.result; if (coverUrlInput) coverUrlInput.value = data; if (coverPreview){ coverPreview.src = data; coverPreview.style.display='inline-block'; } };
-                reader.readAsDataURL(f);
+            coverFileEl.addEventListener('change', async (e)=>{
+                const f = e.target.files && e.target.files[0]; if (!f) return;
+                const data = await compressImg(f, 1280, 0.82);
+                if (coverUrlInput) coverUrlInput.value = data;
+                if (coverPreview){ coverPreview.src = data; coverPreview.style.display='inline-block'; }
             });
         }
         if (coverUrlInput) {
@@ -263,20 +283,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (fileEl) {
-            fileEl.addEventListener('change', (e)=>{
+            fileEl.addEventListener('change', async (e)=>{
                 const files = Array.from(e.target.files || []);
                 if (!files.length) return;
-                let remaining = files.length;
-                const collected = [];
-                files.forEach(f=>{
-                    const reader = new FileReader();
-                    reader.onload = ()=>{
-                        collected.push(reader.result);
-                        remaining -= 1;
-                        if (remaining === 0) appendUrls(collected);
-                    };
-                    reader.readAsDataURL(f);
-                });
+                const collected = await Promise.all(files.map(f => compressImg(f, 1280, 0.82)));
+                appendUrls(collected);
             });
         }
 

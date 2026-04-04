@@ -62,7 +62,7 @@
                     const r = await fetch('/api/trips'); if (!r.ok) return; const all = await r.json();
                     const trips = (all||[]).filter(t=>t.category==='bate-volta');
                     if (!trips.length) { container.innerHTML = '<p style="color:#666">Nenhuma viagem cadastrada para esta categoria.</p>'; return; }
-                    function normalizeImg(u){ if (!u) return ''; const s = (u||'').toString(); return (/^(data:|https?:|\\/)/i).test(s) ? s : ('/' + s)).replace(/'/g, "\\'"); }
+                    function normalizeImg(u){ if (!u) return ''; const s = (u||'').toString(); const n = (/^(data:|https?:|\/)/i).test(s) ? s : ('/' + s); return n.replace(/'/g, "\\'"); }
                     function collectImages(trip){
                         const list = [];
                         if (trip.coverImage) list.push(trip.coverImage);
