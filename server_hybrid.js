@@ -218,7 +218,7 @@ if (USE_POSTGRES) {
           description TEXT,
           points TEXT,
           price DECIMAL(10,2),
-          coverImage VARCHAR(500),
+          coverImage TEXT,
           galleryImages TEXT,
           createdBy VARCHAR(255),
           createdAt VARCHAR(50)
@@ -227,7 +227,8 @@ if (USE_POSTGRES) {
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_date ON trips(date)`);
       await db.run(`CREATE INDEX IF NOT EXISTS idx_trips_category ON trips(category)`);
       try { await db.run('ALTER TABLE trips ADD COLUMN galleryImages TEXT'); } catch (e) { /* ignore if exists */ }
-      // SQLite nao impoe limite em VARCHAR(n) — coverImage ja armazena qualquer tamanho
+      // Migrar coverImage de VARCHAR(500) para TEXT em tabelas ja existentes (PostgreSQL)
+      try { await db.run('ALTER TABLE trips ALTER COLUMN coverImage TYPE TEXT'); } catch (e) { console.warn('[DB] coverImage migration:', e.message); }
 
       await db.run(`
         CREATE TABLE IF NOT EXISTS banners (
