@@ -548,6 +548,17 @@ app.get('/api/trips', async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM trips ORDER BY date');
     const parsed = rows.map(r => {
+      r = {
+        ...r,
+        departureTime: r.departureTime ?? r.departuretime ?? '',
+        returnTime: r.returnTime ?? r.returntime ?? '',
+        departureAddress: r.departureAddress ?? r.departureaddress ?? '',
+        coverImage: r.coverImage ?? r.coverimage ?? '',
+        galleryImages: r.galleryImages ?? r.galleryimages ?? '',
+        createdBy: r.createdBy ?? r.createdby ?? '',
+        createdAt: r.createdAt ?? r.createdat ?? ''
+      };
+
       try {
         r.points = r.points ? JSON.parse(r.points) : [];
       } catch(e) {
